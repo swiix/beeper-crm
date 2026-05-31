@@ -356,6 +356,14 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
     Math.min(50, Math.round(rules?.analysisConcurrency ?? DEFAULT_TINDER_ANALYZE_CONCURRENCY))
   );
 
+  const { data: ignoredChatsData } = useSWR<{ chatIds: string[] }>(
+    "todo-ignored-chats",
+    () => fetch("/api/settings/todo-ignored-chats").then((r) => r.json()),
+    SWR_CONFIG
+  );
+  const ignoredChatIds = ignoredChatsData?.chatIds ?? [];
+  const ignoredChatsReady = ignoredChatsData !== undefined;
+
   const { data: accounts = [], error: accountsError, isLoading: accountsLoading } = useSWR<BeeperAccount[]>(
     "tinder:accounts",
     fetchAccounts,
@@ -395,6 +403,16 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
     });
   }, [chats, priorityMap]);
 
+  /** Same ignore list as Todo → skip batch analysis and Tinder queue for ignored chats. */
+  const analyzableChats = useMemo(
+    () => sortedChats.filter((c) => c.id && !ignoredChatIds.includes(c.id)),
+    [sortedChats, ignoredChatIds]
+  );
+
+  useEffect(() => {
+    setCurrentIndex((i) => Math.min(i, Math.max(0, analyzableChats.length - 1)));
+  }, [analyzableChats.length]);
+
   useEffect(() => {
     if (!selectedAccountId) {
       setReadyToStart(false);
@@ -421,10 +439,17 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
   }, [chats]);
 
   useEffect(() => {
-    if (!selectedAccountId || sortedChats.length === 0 || readyToStart || initialAnalysisStartedRef.current) return;
+    if (!selectedAccountId || !ignoredChatsReady || readyToStart || initialAnalysisStartedRef.current) return;
+    if (analyzableChats.length === 0) {
+      initialAnalysisStartedRef.current = true;
+      setReadyToStart(true);
+      setAnalyzedUntilIndex(0);
+      setInitialProgress(null);
+      return;
+    }
     initialAnalysisStartedRef.current = true;
-    const count = Math.min(INITIAL_ANALYZE_COUNT, sortedChats.length);
-    const ids = sortedChats.slice(0, count).map((c) => c.id).filter(Boolean);
+    const count = Math.min(INITIAL_ANALYZE_COUNT, analyzableChats.length);
+    const ids = analyzableChats.slice(0, count).map((c) => c.id).filter(Boolean);
     setInitialProgress({ current: 0, total: count });
     (async () => {
       try {
@@ -451,17 +476,17 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
         setInitialProgress(null);
       }
     })();
-  }, [selectedAccountId, sortedChats, readyToStart, analyzeConcurrency]);
+  }, [selectedAccountId, analyzableChats, ignoredChatsReady, readyToStart, analyzeConcurrency]);
 
   useEffect(() => {
-    if (!readyToStart || sortedChats.length === 0) return;
-    if (currentIndex < analyzedUntilIndex - 1 || analyzedUntilIndex >= sortedChats.length) return;
+    if (!readyToStart || analyzableChats.length === 0) return;
+    if (currentIndex < analyzedUntilIndex - 1 || analyzedUntilIndex >= analyzableChats.length) return;
     const nextStart = analyzedUntilIndex;
-    const nextEnd = Math.min(analyzedUntilIndex + BACKGROUND_BATCH_SIZE, sortedChats.length);
+    const nextEnd = Math.min(analyzedUntilIndex + BACKGROUND_BATCH_SIZE, analyzableChats.length);
     if (nextStart >= nextEnd) return;
     if (backgroundAnalysisStartedRef.current) return;
     backgroundAnalysisStartedRef.current = true;
-    const ids = sortedChats.slice(nextStart, nextEnd).map((c) => c.id).filter(Boolean);
+    const ids = analyzableChats.slice(nextStart, nextEnd).map((c) => c.id).filter(Boolean);
     (async () => {
       try {
         const results = await runServerBatchAnalyze(ids, analyzeConcurrency);
@@ -481,9 +506,9 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
         backgroundAnalysisStartedRef.current = false;
       }
     })();
-  }, [readyToStart, sortedChats, currentIndex, analyzedUntilIndex, analyzeConcurrency]);
+  }, [readyToStart, analyzableChats, currentIndex, analyzedUntilIndex, analyzeConcurrency]);
 
-  const currentChat = sortedChats[currentIndex];
+  const currentChat = analyzableChats[currentIndex];
   const chatId = currentChat?.id;
   const accountId = currentChat?.accountID ?? selectedAccountId ?? "";
 
@@ -727,8 +752,8 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
   }, [accountId, chatId, onOpenChat, openChatExplicit, settings.openChatWith]);
 
   const goNext = useCallback(() => {
-    setCurrentIndex((i) => Math.min(i + 1, sortedChats.length));
-  }, [sortedChats.length]);
+    setCurrentIndex((i) => Math.min(i + 1, analyzableChats.length));
+  }, [analyzableChats.length]);
 
   const goPrev = useCallback(() => {
     setCurrentIndex((i) => Math.max(0, i - 1));
@@ -905,7 +930,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
     suggestions,
   ]);
 
-  const progress = sortedChats.length > 0 ? Math.round(((currentIndex + 1) / sortedChats.length) * 100) : 0;
+  const progress = analyzableChats.length > 0 ? Math.round(((currentIndex + 1) / analyzableChats.length) * 100) : 0;
 
   if (accountsError) {
     return (
@@ -1061,6 +1086,34 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
         <h1 className="text-3xl font-bold mb-6">Tinder Chat</h1>
         <p className="text-center text-xl font-semibold">Keine Chats im Posteingang</p>
         <p className="mt-2 text-center text-white/90">Archivierte Chats werden hier nicht angezeigt.</p>
+      </div>
+    );
+  }
+
+  if (!ignoredChatsReady) {
+    return (
+      <div
+        className="flex h-full flex-col items-center justify-center px-6 text-white font-tinder"
+        style={{ background: `linear-gradient(135deg, ${GRADIENT_TOP} 0%, ${TINDER_ORANGE} 100%)` }}
+      >
+        <h1 className="text-3xl font-bold mb-6">Tinder Chat</h1>
+        <div className="h-12 w-12 animate-pulse rounded-full bg-white/30" />
+        <p className="mt-4 text-lg">Lade Einstellungen…</p>
+      </div>
+    );
+  }
+
+  if (analyzableChats.length === 0) {
+    return (
+      <div
+        className="flex h-full flex-col items-center justify-center px-6 text-white font-tinder"
+        style={{ background: `linear-gradient(135deg, ${GRADIENT_TOP} 0%, ${TINDER_ORANGE} 100%)` }}
+      >
+        <h1 className="text-3xl font-bold mb-6">Tinder Chat</h1>
+        <p className="text-center text-xl font-semibold">Alle Chats ignoriert</p>
+        <p className="mt-2 text-center text-white/90">
+          In der Todo-Liste sind alle sichtbaren Chats für Analysen ignoriert. Entferne Chats dort von der Ignorierliste, um sie hier zu bearbeiten.
+        </p>
       </div>
     );
   }
@@ -1555,7 +1608,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
         )}
 
         <p className="mt-6 text-center text-sm text-white/80">
-          {currentIndex + 1} / {sortedChats.length}
+          {currentIndex + 1} / {analyzableChats.length}
         </p>
       </div>
     </div>
