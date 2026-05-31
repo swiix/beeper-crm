@@ -48,27 +48,29 @@ async function buildMessagesPayloadWithTranscription(
   messages: MessageItem[],
   contactName?: string
 ): Promise<string> {
-  const lines: string[] = [];
-  for (const m of messages) {
-    const who = m.isSender ? "Ich" : (m.senderName ?? contactName ?? "Gegenüber");
-    const textPart = (m.text ?? "").trim();
-    const audioAttachments = (m.attachments ?? []).filter(isAudioAttachment);
-    const transcripts: string[] = [];
-    for (const att of audioAttachments) {
-      const audioUrl = att.srcURL ?? att.id ?? "";
-      if (audioUrl) {
-        const t = await getTranscript(audioUrl);
-        if (t) transcripts.push(t);
-      }
-    }
-    const audioPart =
-      transcripts.length > 0
-        ? `[Sprachnachricht]: ${transcripts.join(" ")}`
-        : "";
-    const combined = [textPart, audioPart].filter(Boolean).join(" ");
-    if (combined) lines.push(`${who}: ${combined}`);
-  }
-  return lines.join("\n");
+  const lines = await Promise.all(
+    messages.map(async (m) => {
+      const who = m.isSender ? "Ich" : (m.senderName ?? contactName ?? "Gegenüber");
+      const textPart = (m.text ?? "").trim();
+      const audioAttachments = (m.attachments ?? []).filter(isAudioAttachment);
+      const transcripts = (
+        await Promise.all(
+          audioAttachments.map(async (att) => {
+            const audioUrl = att.srcURL ?? att.id ?? "";
+            if (!audioUrl) return null;
+            return getTranscript(audioUrl);
+          })
+        )
+      ).filter((t): t is string => !!t);
+      const audioPart =
+        transcripts.length > 0
+          ? `[Sprachnachricht]: ${transcripts.join(" ")}`
+          : "";
+      const combined = [textPart, audioPart].filter(Boolean).join(" ");
+      return combined ? `${who}: ${combined}` : "";
+    })
+  );
+  return lines.filter(Boolean).join("\n");
 }
 
 /** Beeper messages list response: no nextCursor; use message.sortKey as cursor for next page. */

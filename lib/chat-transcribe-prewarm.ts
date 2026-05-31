@@ -5,6 +5,7 @@
 
 import { beeperJson } from "@/lib/beeper";
 import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
+import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import { getTranscript } from "@/lib/transcribe";
 
 const MESSAGE_LIMIT = 50;
@@ -59,16 +60,24 @@ export async function fetchLastMessages(chatId: string, limit: number): Promise<
 /** Transcribe all audio in messages for one chat (fills transcript cache). */
 export async function prewarmTranscriptsForChat(chatId: string, limit: number = MESSAGE_LIMIT): Promise<void> {
   const messages = await fetchLastMessages(chatId, limit);
-  for (const m of messages) {
-    const audioAttachments = (m.attachments ?? []).filter(isAudioAttachment);
-    for (const att of audioAttachments) {
-      const audioUrl = att.srcURL ?? att.id ?? "";
-      if (audioUrl) await getTranscript(audioUrl);
-    }
-  }
+  const audioUrls = messages.flatMap((m) =>
+    (m.attachments ?? [])
+      .filter(isAudioAttachment)
+      .map((att) => att.srcURL ?? att.id ?? "")
+      .filter(Boolean)
+  );
+  await Promise.all(audioUrls.map((url) => getTranscript(url)));
 }
 
-/** Prewarm transcript cache for multiple chats. Runs per-chat in parallel. */
-export async function prewarmTranscriptsForChats(chatIds: string[]): Promise<void> {
-  await Promise.all(chatIds.map((id) => prewarmTranscriptsForChat(id)));
+const DEFAULT_CHAT_PREWARM_CONCURRENCY = 12;
+
+/** Prewarm transcript cache for multiple chats with a concurrency limit. */
+export async function prewarmTranscriptsForChats(
+  chatIds: string[],
+  concurrency: number = DEFAULT_CHAT_PREWARM_CONCURRENCY
+): Promise<void> {
+  const limit = Math.max(1, Math.min(50, Math.round(concurrency)));
+  await runWithConcurrency(limit, chatIds, async (id) => {
+    await prewarmTranscriptsForChat(id);
+  });
 }

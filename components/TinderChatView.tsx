@@ -15,6 +15,7 @@ import type {
 import { getNetworkLabel } from "@/lib/types";
 import { getAssetUrl } from "@/lib/asset-url";
 import { SWR_CONFIG } from "@/lib/swr-config";
+import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import { dispatchCrmAnalysisUpdated } from "@/lib/crm-analysis-sync";
 
@@ -151,39 +152,67 @@ const BTN_REMINDER_BORDER = "rgba(255,255,255,0.7)";
 
 const INITIAL_ANALYZE_COUNT = 50;
 const BACKGROUND_BATCH_SIZE = 50;
+const DEFAULT_TINDER_ANALYZE_CONCURRENCY = 10;
 
 /**
- * Run analyze-chat for all given chat IDs in parallel.
- * Returns analysis data (incl. nextMessageSuggestions) per chat so the client can populate SWR cache.
+ * Analyze chats with bounded concurrency (transcribe + KI run per chat, overlapped).
  */
 async function runAnalyzeForChats(
   chatIds: string[],
+  concurrency: number,
   onProgress?: (current: number, total: number) => void
 ): Promise<Array<{ chatId: string; data: ContactAnalysis | null }>> {
   const total = chatIds.length;
   let done = 0;
-  const runOne = async (id: string): Promise<ContactAnalysis | null> => {
+  const resultMap = new Map<string, ContactAnalysis | null>();
+  const limit = Math.max(1, Math.min(50, Math.round(concurrency)));
+
+  await runWithConcurrency(limit, chatIds, async (id) => {
     try {
+      await fetch("/api/transcribe-chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatIds: [id] }),
+      });
       const res = await fetch("/api/analyze-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chatId: id, view: "tinder", source: "tinder-batch-prefetch" }),
       });
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data as ContactAnalysis;
+      resultMap.set(id, res.ok ? ((await res.json()) as ContactAnalysis) : null);
     } catch {
-      return null;
+      resultMap.set(id, null);
     } finally {
       done += 1;
       onProgress?.(done, total);
     }
-  };
-  const allResults = await Promise.all(chatIds.map((id) => runOne(id)));
-  if (allResults.some((r) => r != null)) {
+  });
+
+  if ([...resultMap.values()].some((r) => r != null)) {
     dispatchCrmAnalysisUpdated();
   }
-  return chatIds.map((chatId, idx) => ({ chatId, data: allResults[idx] ?? null }));
+  return chatIds.map((chatId) => ({ chatId, data: resultMap.get(chatId) ?? null }));
+}
+
+/** Server-side pipelined batch (no per-chat progress). */
+async function runServerBatchAnalyze(
+  chatIds: string[],
+  concurrency: number
+): Promise<Array<{ chatId: string; data: ContactAnalysis | null }>> {
+  const res = await fetch("/api/tinder/batch-analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatIds, concurrency }),
+  });
+  if (!res.ok) return chatIds.map((chatId) => ({ chatId, data: null }));
+  const payload = (await res.json()) as {
+    results?: Array<{ chatId: string; data: ContactAnalysis | null }>;
+  };
+  const byId = new Map((payload.results ?? []).map((r) => [r.chatId, r.data]));
+  if ([...byId.values()].some((r) => r != null)) {
+    dispatchCrmAnalysisUpdated();
+  }
+  return chatIds.map((chatId) => ({ chatId, data: byId.get(chatId) ?? null }));
 }
 
 /** Audio player + transcript (fetched via API; cache is warmed by analyze-chat). */
@@ -316,6 +345,16 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
   const initialAnalysisStartedRef = useRef(false);
   const backgroundAnalysisStartedRef = useRef(false);
 
+  const { data: rules } = useSWR<{ analysisConcurrency?: number }>(
+    "settings-rules",
+    () => fetch("/api/settings/rules").then((r) => r.json()),
+    SWR_CONFIG
+  );
+  const analyzeConcurrency = Math.max(
+    1,
+    Math.min(50, Math.round(rules?.analysisConcurrency ?? DEFAULT_TINDER_ANALYZE_CONCURRENCY))
+  );
+
   const { data: accounts = [], error: accountsError, isLoading: accountsLoading } = useSWR<BeeperAccount[]>(
     "tinder:accounts",
     fetchAccounts,
@@ -388,12 +427,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
     setInitialProgress({ current: 0, total: count });
     (async () => {
       try {
-        await fetch("/api/transcribe-chats", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chatIds: ids }),
-        });
-        const results = await runAnalyzeForChats(ids, (current, total) =>
+        const results = await runAnalyzeForChats(ids, analyzeConcurrency, (current, total) =>
           setInitialProgress({ current, total })
         );
         results.forEach(({ chatId, data }) => {
@@ -416,7 +450,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
         setInitialProgress(null);
       }
     })();
-  }, [selectedAccountId, sortedChats, readyToStart]);
+  }, [selectedAccountId, sortedChats, readyToStart, analyzeConcurrency]);
 
   useEffect(() => {
     if (!readyToStart || sortedChats.length === 0) return;
@@ -429,12 +463,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
     const ids = sortedChats.slice(nextStart, nextEnd).map((c) => c.id).filter(Boolean);
     (async () => {
       try {
-        await fetch("/api/transcribe-chats", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chatIds: ids }),
-        });
-        const results = await runAnalyzeForChats(ids);
+        const results = await runServerBatchAnalyze(ids, analyzeConcurrency);
         results.forEach(({ chatId, data }) => {
           if (data) globalMutate(`tinder:analysis:${chatId}`, data);
         });
@@ -451,7 +480,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
         backgroundAnalysisStartedRef.current = false;
       }
     })();
-  }, [readyToStart, sortedChats, currentIndex, analyzedUntilIndex]);
+  }, [readyToStart, sortedChats, currentIndex, analyzedUntilIndex, analyzeConcurrency]);
 
   const currentChat = sortedChats[currentIndex];
   const chatId = currentChat?.id;
@@ -1055,7 +1084,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
           />
         </div>
         <p className="mt-4 text-sm text-white/80">Danach geht es los.</p>
-        <p className="mt-1 text-sm text-white/70">Das kann 1–2 Minuten dauern.</p>
+        <p className="mt-1 text-sm text-white/70">Parallel ({analyzeConcurrency} gleichzeitig) — meist deutlich schneller.</p>
         <p className="mt-3 text-sm text-white/80">Hol dir in der Zeit einen Kaffee oder Wasser ☕🥤</p>
       </div>
     );

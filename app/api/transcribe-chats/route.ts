@@ -11,7 +11,7 @@ const log = createLogger("api:transcribe-chats");
  * Body: { chatIds: string[] }
  */
 export async function POST(request: NextRequest) {
-  let body: { chatIds?: string[] };
+  let body: { chatIds?: string[]; concurrency?: number };
   try {
     body = await request.json();
   } catch {
@@ -21,8 +21,13 @@ export async function POST(request: NextRequest) {
   if (chatIds.length === 0) {
     return NextResponse.json({ ok: true, prewarmed: 0 });
   }
+  const rawConcurrency = body?.concurrency;
+  const concurrency =
+    typeof rawConcurrency === "number" && !Number.isNaN(rawConcurrency)
+      ? Math.max(1, Math.min(50, Math.round(rawConcurrency)))
+      : undefined;
   try {
-    await prewarmTranscriptsForChats(chatIds);
+    await prewarmTranscriptsForChats(chatIds, concurrency);
     log.info({ count: chatIds.length, chatIds: chatIds.slice(0, 5) }, "transcribe-chats prewarm done");
     return NextResponse.json({ ok: true, prewarmed: chatIds.length });
   } catch (e) {
