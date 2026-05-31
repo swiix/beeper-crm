@@ -1,0 +1,78 @@
+{
+  "status": 200,
+  "data": [
+    {
+      "accountID": "hungryserv",
+      "network": "Beeper (Matrix)",
+      "user": {
+        "id": "@personalcoding:beeper.com",
+        "email": "dawid@personalcoding.de",
+        "fullName": "Dawid Paliczuk",
+        "displayText": "Dawid Paliczuk",
+        "username": "personalcoding:beeper.com",
+        "isSelf": true
+      }
+    },
+    {
+      "accountID": "instagramgo",
+      "network": "Instagram",
+      "user": {
+        "id": "17842115576339859",
+        "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_evLxWBPqHZtsWfsxrDr5fNXVu2tTei5Bf37BHq4o7P4RYXXWzpqLfDIYzAkWccTc",
+        "fullName": "Dawid mit W | Chatbot Marketing für Astrologie & Meditation",
+        "displayText": "Dawid mit W | Chatbot Marketing für Astrologie & Meditation",
+        "username": "personalcoding.de",
+        "isSelf": true
+      }
+    },
+    {
+      "accountID": "slackgo.T09STJE646B-U09STJL7YTH",
+      "network": "Slack",
+      "user": {
+        "id": "T09STJE646B-U09STJL7YTH",
+        "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_Qdss1aTZyRt2LZ54KpocdbXCUZJFayPpIFaeIow6BCneEjaKaSvMciKR6GRI9ywm",
+        "email": "dawid@personalcoding.de",
+        "fullName": "Dawid - PersonalCoding.de",
+        "displayText": "BÆ Society - dawid@personalcoding.de",
+        "isSelf": true
+      }
+    },
+    {
+      "accountID": "telegram",
+      "network": "Telegram",
+      "user": {
+        "id": "444612785",
+        "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_telegram_8J-QiAABAAAAABqAQLEAAAAAGoBAsQAAAAAAAAAAGoBAsRsxp68AoqGbV5pwRn6a7BKpe7HNKQ",
+        "fullName": "Dawid PersonalCoding.de",
+        "phoneNumber": "+4917622291967",
+        "displayText": "@dawidMitW",
+        "username": "dawidMitW",
+        "isSelf": true
+      }
+    },
+    {
+      "accountID": "twitter",
+      "network": "Twitter/X",
+      "user": {
+        "id": "1866995455252414464",
+        "imgURL": "mxc://local.beeper.com/personalcoding_u1el57rITC0Fn8guq2NgMpgfz5hfbUFF9MkXTYKTeHbLG7MScjfwNbqEXMbYPM7t",
+        "fullName": "Dawid Paliczuk",
+        "displayText": "@personalcodingX",
+        "username": "personalcodingX",
+        "isSelf": true
+      }
+    },
+    {
+      "accountID": "whatsapp",
+      "network": "WhatsApp",
+      "user": {
+        "id": "4917622291967",
+        "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_7b58WDpJnH7P8KIQ5a01WS1pvjA3vNJTrTBSn5YbYXsR8Qaqyh4KvNfl2GqVfd8u",
+        "fullName": "Dawid mit W",
+        "phoneNumber": "+4917622291967",
+        "displayText": "+49 176 22291967",
+        "isSelf": true
+      }
+    }
+  ]
+}

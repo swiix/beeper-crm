@@ -1,0 +1,3727 @@
+"use client";
+
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import useSWR, { mutate as globalMutate } from "swr";
+import type { BeeperAccount, BeeperChat } from "@/lib/types";
+import { runWithConcurrency } from "@/lib/run-with-concurrency";
+import {
+  getChatViewFilter,
+  setChatViewFilter,
+  getTodoListAccountId,
+  setTodoListAccountId,
+  getTodoAnalyzePrefs,
+  setTodoAnalyzePrefs,
+  type ChatListViewType,
+  type SavedTodoAnalyzePrefs,
+  type TodoAnalyzeAttachmentMode,
+  type TodoAnalyzeMaxAgeUnit,
+  type TodoAnalyzeScanMode,
+} from "@/lib/settings";
+import {
+  pushTodoCompletionUndo,
+  pushTodoSuggestionRejectUndo,
+  pushTodoSuggestionAcceptUndo,
+  pushTodoAcceptBatchUndo,
+  registerTodoSuggestionUndoCallbacks,
+  clearTodoSuggestionUndoFrames,
+} from "@/lib/todo-completion-undo";
+import { OnePromptResultsDialog } from "@/components/OnePromptResultsDialog";
+import { DueDatePicker } from "@/components/DueDatePicker";
+import { TodoSyncBadge } from "@/components/todo/TodoSyncBadge";
+import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
+import {
+  dueDateTimeToMs,
+  formatDueDateTimeRelative,
+  suggestionDueToDateTime,
+  syncDueDateFromDateTime,
+  todoDueToDateTime,
+  type DueDateTime,
+} from "@/lib/due-datetime";
+
+type TodoSuggestionItem = {
+  title: string;
+  due: string | null;
+  due_time?: string | null;
+  priority?: number | string;
+  notes?: string | null;
+  category?: string | null;
+  estimated_time_minutes?: number | null;
+  estimated_time_hours?: number | null;
+};
+
+type TodoItem = {
+  id: string;
+  title: string;
+  notes: string | null;
+  due_date: string | null;
+  due_at?: number | null;
+  completed: number;
+  archived: number;
+  priority: number | null;
+  sort_order: number;
+  list_id: string | null;
+  source_chat_id: string | null;
+  source_chat_name: string | null;
+  source_account_id: string | null;
+  created_at: number;
+  updated_at: number;
+  reminder_at?: number | null;
+  snoozed?: number;
+  pinned?: number;
+  estimated_time_minutes?: number | null;
+  external_google_task_id?: string | null;
+  google_sync_at?: number | null;
+  external_reclaim_task_id?: string | null;
+  reclaim_sync_at?: number | null;
+};
+
+type OnePromptDialogResult = {
+  chatId: string;
+  chatName: string;
+  matched: boolean;
+  hasPhone: boolean;
+  hasEmail: boolean;
+  phones: string[];
+  emails: string[];
+  reason: string;
+  output: string;
+  outputType: "text" | "json";
+  todo: {
+    title: string;
+    notes: string | null;
+    due: string | null;
+    priority: number | null;
+  } | null;
+};
+
+type GoogleTasksStatus = {
+  connected: boolean;
+  needsReconnect?: boolean;
+  expiry_date?: number | null;
+};
+
+type ReclaimStatus = {
+  connected: boolean;
+  tokenConfigured?: boolean;
+  tokenHint?: string | null;
+  email?: string | null;
+};
+
+type TodoListSettings = {
+  todoSyncTarget?: "google" | "reclaim";
+  autoSyncOnAccept?: boolean;
+};
+
+/** Compute reminder preset options (label + epoch ms). Uses local time for fixed clock times. */
+function getReminderPresets(): { label: string; atMs: number }[] {
+  const now = Date.now();
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  const setTime = (date: Date, hours: number, minutes: number) => {
+    const x = new Date(date);
+    x.setHours(hours, minutes, 0, 0);
+    return x.getTime();
+  };
+
+  const tomorrow = new Date(d);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const in2 = new Date(d);
+  in2.setDate(in2.getDate() + 2);
+  const in3 = new Date(d);
+  in3.setDate(in3.getDate() + 3);
+  const in7 = new Date(d);
+  in7.setDate(in7.getDate() + 7);
+
+  const nextMonday = new Date(d);
+  let day = nextMonday.getDay();
+  const add = day === 0 ? 1 : day === 1 ? 7 : 8 - day;
+  nextMonday.setDate(nextMonday.getDate() + add);
+  const nextSunday = new Date(d);
+  day = nextSunday.getDay();
+  const addSun = day === 0 ? 7 : 7 - day;
+  nextSunday.setDate(nextSunday.getDate() + addSun);
+
+  const today20 = setTime(d, 20, 0);
+  const presets: { label: string; atMs: number }[] = [
+    { label: "In 5 Minuten", atMs: now + 5 * 60 * 1000 },
+    { label: "In 30 Minuten", atMs: now + 30 * 60 * 1000 },
+    { label: "In 1 Stunde", atMs: now + 60 * 60 * 1000 },
+    { label: "Heute 20:00", atMs: today20 <= now ? setTime(tomorrow, 20, 0) : today20 },
+    { label: "Morgen 6:00", atMs: setTime(tomorrow, 6, 0) },
+    { label: "In 2 Tagen", atMs: in2.getTime() },
+    { label: "In 3 Tagen", atMs: in3.getTime() },
+    { label: "In 7 Tagen", atMs: in7.getTime() },
+    { label: "Nächster Montag 6:00", atMs: setTime(nextMonday, 6, 0) },
+    { label: "Nächster Sonntag 6:00", atMs: setTime(nextSunday, 6, 0) },
+  ];
+  return presets;
+}
+
+function formatReminderAt(ms: number): string {
+  const d = new Date(ms);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (isToday) return `Heute ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (d.toDateString() === tomorrow.toDateString()) return `Morgen ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getDate()}.${pad(d.getMonth() + 1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Format AI-estimated time (minutes) for display: e.g. 15 -> "15 Min", 60 -> "1 h", 90 -> "1,5 h". */
+function formatEstimatedTime(minutes: number): string {
+  if (minutes < 60) return `${minutes} Min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (m === 0) return `${h} h`;
+  const decimal = h + m / 60;
+  return `${decimal.toFixed(1).replace(".", ",")} h`;
+}
+
+type TodoListRecord = { id: string; name: string; sort_order: number };
+
+function isTodoSuggestionItem(value: unknown): value is TodoSuggestionItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<TodoSuggestionItem>;
+  return typeof item.title === "string";
+}
+
+function toTodoSuggestionList(value: unknown): TodoSuggestionItem[] {
+  return Array.isArray(value) ? value.filter(isTodoSuggestionItem) : [];
+}
+
+type OpenAiUsageSummary = {
+  days: number;
+  sinceMs: number;
+  totals: {
+    category: string;
+    model: string;
+    request_count: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  byCategoryAndModel: Array<{
+    category: string;
+    model: string;
+    request_count: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  }>;
+};
+
+function getAccountId(acc: BeeperAccount): string {
+  return String((acc as { accountID?: string }).accountID ?? acc.id ?? "").trim();
+}
+
+/** Resolve display name for a todo's source chat: use stored name, or lookup from loaded chats when same account. */
+function getTodoChatDisplayName(
+  todo: TodoItem,
+  currentAccountId: string | null,
+  chats: BeeperChat[]
+): string | null {
+  const name = (todo.source_chat_name ?? "").trim();
+  if (name) return name;
+  if (!todo.source_chat_id || !currentAccountId || todo.source_account_id !== currentAccountId) return null;
+  const chat = chats.find((c) => c.id === todo.source_chat_id);
+  return (chat?.name ?? (chat as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? null;
+}
+
+type ChatsPageResponse = { items?: BeeperChat[]; hasMore?: boolean; oldestCursor?: string; nextCursor?: string };
+
+async function fetchChatsForAccount(accountId: string): Promise<BeeperChat[]> {
+  const allItems: BeeperChat[] = [];
+  let cursor: string | null = null;
+  let hasMore = true;
+  let pageCount = 0;
+  const seenCursors = new Set<string>();
+  while (hasMore) {
+    pageCount += 1;
+    const url =
+      cursor == null
+        ? `/api/chats?accountIDs=${encodeURIComponent(accountId)}`
+        : `/api/chats?accountIDs=${encodeURIComponent(accountId)}&cursor=${encodeURIComponent(cursor)}&direction=before`;
+    const res = await fetch(url);
+    const data = (await res.json()) as ChatsPageResponse & { error?: string };
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Chats konnten nicht geladen werden.");
+    }
+    const items = data.items ?? [];
+    allItems.push(...items);
+    const nextCursor = data.oldestCursor ?? data.nextCursor ?? null;
+    const repeatedCursor = nextCursor != null && seenCursors.has(nextCursor);
+    hasMore = (data.hasMore === true && nextCursor != null && !repeatedCursor) || false;
+    if (nextCursor != null) seenCursors.add(nextCursor);
+    cursor = nextCursor;
+    // Safety guard if upstream cursor behavior is broken.
+    if (pageCount >= 200) break;
+  }
+  const uniqueById = new Map<string, BeeperChat>();
+  for (const chat of allItems) {
+    if (chat?.id) uniqueById.set(chat.id, chat);
+  }
+  const singleAndGroup = Array.from(uniqueById.values()).filter((c) => {
+    const t = (c.type ?? "").toLowerCase();
+    return t === "single" || t === "group";
+  });
+  singleAndGroup.sort((a, b) => {
+    const ta = a.lastActivity ?? (a.lastMessage as { timestamp?: string })?.timestamp ?? "";
+    const tb = b.lastActivity ?? (b.lastMessage as { timestamp?: string })?.timestamp ?? "";
+    return new Date(tb).getTime() - new Date(ta).getTime();
+  });
+  return singleAndGroup;
+}
+
+async function fetchAccounts(): Promise<BeeperAccount[]> {
+  const res = await fetch("/api/accounts");
+  const data = await res.json();
+  if (!res.ok) throw new Error((data as { error?: string })?.error ?? "Accounts failed");
+  const list = Array.isArray(data) ? data : (data as { items?: BeeperAccount[] }).items ?? [];
+  return list;
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const IGNORED_CHATS_STORAGE_KEY = "beeper-crm:todo-ignored-chats";
+const LEGACY_TODO_SUGGESTIONS_SESSION_KEY = "beeper-crm:todo-suggestions";
+const ALL_CHATS_SENTINEL = "__all__";
+
+const TODO_SUGGESTIONS_VIEW_STORAGE_KEY = "beeper-crm:todo-suggestions-view";
+const MAX_VIEW_PROMPT_CHARS = 100_000;
+
+type TodoSuggestionsViewStored = {
+  promptSuffix: string;
+  onePromptAllChats: string;
+  leftTab: "dashboard" | "chats";
+  chatSearchQuery: string;
+};
+
+const DEFAULT_TODO_SUGGESTIONS_VIEW: TodoSuggestionsViewStored = {
+  promptSuffix: "",
+  onePromptAllChats: "",
+  leftTab: "chats",
+  chatSearchQuery: "",
+};
+
+type TodoListPersistSnapshot = TodoSuggestionsViewStored;
+
+function readStoredTodoSuggestionsView(): TodoSuggestionsViewStored {
+  if (typeof window === "undefined") return DEFAULT_TODO_SUGGESTIONS_VIEW;
+  try {
+    const raw = localStorage.getItem(TODO_SUGGESTIONS_VIEW_STORAGE_KEY);
+    if (!raw) return DEFAULT_TODO_SUGGESTIONS_VIEW;
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    const out: TodoSuggestionsViewStored = { ...DEFAULT_TODO_SUGGESTIONS_VIEW };
+    if (typeof o.promptSuffix === "string") out.promptSuffix = o.promptSuffix.slice(0, MAX_VIEW_PROMPT_CHARS);
+    if (typeof o.onePromptAllChats === "string") out.onePromptAllChats = o.onePromptAllChats.slice(0, MAX_VIEW_PROMPT_CHARS);
+    if (o.leftTab === "dashboard" || o.leftTab === "chats") out.leftTab = o.leftTab;
+    if (typeof o.chatSearchQuery === "string") out.chatSearchQuery = o.chatSearchQuery.slice(0, MAX_VIEW_PROMPT_CHARS);
+    return out;
+  } catch {
+    return DEFAULT_TODO_SUGGESTIONS_VIEW;
+  }
+}
+
+function writeStoredTodoSuggestionsView(form: TodoSuggestionsViewStored): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    TODO_SUGGESTIONS_VIEW_STORAGE_KEY,
+    JSON.stringify({
+      promptSuffix: form.promptSuffix.slice(0, MAX_VIEW_PROMPT_CHARS),
+      onePromptAllChats: form.onePromptAllChats.slice(0, MAX_VIEW_PROMPT_CHARS),
+      leftTab: form.leftTab,
+      chatSearchQuery: form.chatSearchQuery.slice(0, MAX_VIEW_PROMPT_CHARS),
+    })
+  );
+}
+
+type SuggestionEditFocus = "title" | "due" | "notes";
+
+function formatSuggestionDue(s: TodoSuggestionItem): string {
+  return formatDueDateTimeRelative(suggestionDueToDateTime(s.due, s.due_time));
+}
+
+function suggestionToDueApiFields(s: { due: string | null; due_time?: string | null }) {
+  const dt = suggestionDueToDateTime(s.due, s.due_time);
+  const due_at = dueDateTimeToMs(dt);
+  return {
+    due_date: syncDueDateFromDateTime(dt) ?? undefined,
+    due_time: dt.time ?? undefined,
+    due_at: due_at ?? undefined,
+  };
+}
+
+/** Inline suggestion editor with custom due date/time picker. */
+function TodoSuggestionInlineEditor(props: {
+  suggestion: TodoSuggestionItem;
+  initialFocus?: SuggestionEditFocus;
+  onPersist: (patch: Partial<TodoSuggestionItem>) => void;
+  onFinish: () => void;
+}) {
+  const { suggestion, initialFocus, onPersist, onFinish } = props;
+
+  const [title, setTitle] = useState(suggestion.title);
+  const [dueDateTime, setDueDateTime] = useState<DueDateTime>(() =>
+    suggestionDueToDateTime(suggestion.due, suggestion.due_time)
+  );
+  const [duePickerOpen, setDuePickerOpen] = useState(false);
+  const [notes, setNotes] = useState(() => suggestion.notes?.trim() ?? "");
+  const [hoursStr, setHoursStr] = useState(() => {
+    if (suggestion.estimated_time_hours != null) return String(suggestion.estimated_time_hours);
+    if (suggestion.estimated_time_minutes != null) return String(Number((suggestion.estimated_time_minutes / 60).toFixed(2)));
+    return "";
+  });
+
+  useEffect(() => {
+    setTitle(suggestion.title);
+    setDueDateTime(suggestionDueToDateTime(suggestion.due, suggestion.due_time));
+    setNotes(suggestion.notes?.trim() ?? "");
+    if (suggestion.estimated_time_hours != null) setHoursStr(String(suggestion.estimated_time_hours));
+    else if (suggestion.estimated_time_minutes != null) setHoursStr(String(Number((suggestion.estimated_time_minutes / 60).toFixed(2))));
+    else setHoursStr("");
+  }, [suggestion.title, suggestion.due, suggestion.due_time, suggestion.notes, suggestion.estimated_time_hours, suggestion.estimated_time_minutes]);
+
+  const titleRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+
+  const flushDurationIntoParent = useCallback(() => {
+    const raw = hoursStr.trim();
+    const hours = raw === "" ? null : Number(raw.replace(",", "."));
+    if (hours == null || Number.isNaN(hours) || hours < 0) {
+      if (suggestion.estimated_time_minutes != null || suggestion.estimated_time_hours != null) {
+        onPersist({ estimated_time_minutes: null, estimated_time_hours: null });
+      }
+      return;
+    }
+    const roundedHours = Number(hours.toFixed(2));
+    const minutes = Math.round(roundedHours * 60);
+    if (minutes !== suggestion.estimated_time_minutes || roundedHours !== suggestion.estimated_time_hours) {
+      onPersist({ estimated_time_minutes: minutes, estimated_time_hours: roundedHours });
+    }
+  }, [
+    hoursStr,
+    onPersist,
+    suggestion.estimated_time_hours,
+    suggestion.estimated_time_minutes,
+  ]);
+
+  const persistFieldsAndClose = useCallback(() => {
+    const tid = title.trim();
+    if (tid && tid !== suggestion.title) onPersist({ title: tid });
+
+    const dueNorm = syncDueDateFromDateTime(dueDateTime);
+    const timeNorm = dueDateTime.time;
+    if (dueNorm !== (suggestion.due ?? null) || timeNorm !== (suggestion.due_time ?? null)) {
+      onPersist({ due: dueNorm, due_time: timeNorm });
+    }
+
+    const n = notes.trim() || null;
+    if (n !== (suggestion.notes ?? null)) onPersist({ notes: n });
+
+    flushDurationIntoParent();
+    onFinish();
+  }, [title, dueDateTime, notes, suggestion.title, suggestion.due, suggestion.due_time, suggestion.notes, onPersist, onFinish, flushDurationIntoParent]);
+
+  useLayoutEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const focus = initialFocus ?? "title";
+      if (focus === "title") {
+        titleRef.current?.focus();
+        titleRef.current?.select();
+      } else if (focus === "notes") {
+        notesRef.current?.focus();
+        notesRef.current?.setSelectionRange(
+          notesRef.current.value.length,
+          notesRef.current.value.length
+        );
+      } else {
+        setDuePickerOpen(true);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [initialFocus]);
+
+  const onEnterSaveInput = useCallback(
+    (e: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== "Enter" || e.shiftKey) return;
+      e.preventDefault();
+      persistFieldsAndClose();
+    },
+    [persistFieldsAndClose]
+  );
+
+  const escapeCancelRef = useRef(false);
+  useEffect(() => {
+    const onEsc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      escapeCancelRef.current = true;
+      e.preventDefault();
+      onFinish();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onFinish]);
+
+  const onNotesKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key !== "Enter") return;
+      if (e.shiftKey) {
+        e.preventDefault();
+        const el = e.currentTarget;
+        const start = el.selectionStart ?? 0;
+        const end = el.selectionEnd ?? 0;
+        setNotes((prev) => prev.slice(0, start) + "\n" + prev.slice(end));
+        queueMicrotask(() => {
+          const pos = start + 1;
+          try {
+            el.setSelectionRange(pos, pos);
+          } catch {
+            /* ignore */
+          }
+        });
+        return;
+      }
+      e.preventDefault();
+      persistFieldsAndClose();
+    },
+    [persistFieldsAndClose]
+  );
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div>
+        <label className="block text-xs text-wa-text-secondary">Titel · Enter speichern &amp; schließen · Esc abbrechen</label>
+        <input
+          ref={titleRef}
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={(e) => {
+            if (escapeCancelRef.current) {
+              escapeCancelRef.current = false;
+              return;
+            }
+            const v = e.target.value.trim();
+            if (v && v !== suggestion.title) onPersist({ title: v });
+          }}
+          onKeyDown={onEnterSaveInput}
+          className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-wa-text-primary"
+        />
+      </div>
+      <div>
+        <label className="block text-xs text-wa-text-secondary">Frist (Datum &amp; Uhrzeit)</label>
+        <DueDatePicker
+          className="mt-0.5"
+          value={dueDateTime}
+          defaultOpen={duePickerOpen || initialFocus === "due"}
+          onChange={(next) => {
+            setDueDateTime(next);
+            onPersist({
+              due: syncDueDateFromDateTime(next),
+              due_time: next.time,
+            });
+          }}
+          onClose={() => setDuePickerOpen(false)}
+        />
+      </div>
+      <div>
+        <label className="block text-xs text-wa-text-secondary">Details · Enter speichern, Shift+Enter neue Zeile</label>
+        <textarea
+          ref={notesRef}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={(e) => {
+            if (escapeCancelRef.current) {
+              escapeCancelRef.current = false;
+              return;
+            }
+            const v = e.target.value.trim() || null;
+            if (v !== (suggestion.notes ?? null)) onPersist({ notes: v });
+          }}
+          rows={4}
+          onKeyDown={onNotesKeyDown}
+          className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
+        />
+      </div>
+      <div>
+        <label className="block text-xs text-wa-text-secondary">Dauer (Stunden)</label>
+        <input
+          type="number"
+          min={0}
+          step={0.25}
+          value={hoursStr}
+          onChange={(e) => setHoursStr(e.target.value)}
+          onBlur={() => {
+            if (escapeCancelRef.current) {
+              escapeCancelRef.current = false;
+              return;
+            }
+            flushDurationIntoParent();
+          }}
+          onKeyDown={onEnterSaveInput}
+          className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-wa-text-primary"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={persistFieldsAndClose}
+          title="Alle Felder speichern und Bearbeitungsmodus beenden (wie Enter außer in der Beschreibung)"
+          className="rounded border border-wa-green bg-wa-green/15 px-2 py-1 text-xs font-medium text-wa-green"
+        >
+          Fertig (Speichern)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Max concurrent todo-list analyze requests when loading suggestions for all visible chats. */
+const TODO_ANALYZE_CONCURRENCY = 5;
+/** Stop batch analyze after this many failures (remaining chats are skipped). */
+const TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP = 10;
+
+export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, accountId: string) => void }) {
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [leftTab, setLeftTab] = useState<"dashboard" | "chats">("chats");
+  /** Multi-selection (Shift+click range). Empty when only single selection. */
+  const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
+  const lastClickedIndexRef = useRef<number | null>(null);
+  const { data: ignoredChatsData, mutate: mutateIgnoredChats } = useSWR<{ chatIds: string[] }>(
+    "todo-ignored-chats",
+    () => fetch("/api/settings/todo-ignored-chats").then((r) => r.json()),
+    { revalidateOnFocus: true }
+  );
+  const ignoredChatIds = ignoredChatsData?.chatIds ?? [];
+
+  const updateIgnoredChatIds = useCallback(
+    (updater: (prev: string[]) => string[]) => {
+      void mutateIgnoredChats(async (current) => {
+        const prev = current?.chatIds ?? [];
+        const next = updater(prev);
+        try {
+          const res = await fetch("/api/settings/todo-ignored-chats", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatIds: next }),
+          });
+          if (!res.ok) return current;
+          const data = (await res.json()) as { chatIds?: string[] };
+          return { chatIds: data.chatIds ?? next };
+        } catch {
+          return current;
+        }
+      }, false);
+    },
+    [mutateIgnoredChats]
+  );
+  const [chatContextMenu, setChatContextMenu] = useState<{ chatId: string; x: number; y: number } | null>(null);
+  /** Suggestions per chat — hydrated from SQLite via API; edits are persisted to disk. */
+  const [suggestionsByChat, setSuggestionsByChat] = useState<Record<string, TodoSuggestionItem[]>>({});
+  const suggestionsByChatRef = useRef(suggestionsByChat);
+  suggestionsByChatRef.current = suggestionsByChat;
+  const suggestionsHydratedRef = useRef(false);
+  const persistDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const persistChatSuggestions = useCallback(async (chatId: string, todos: TodoSuggestionItem[]) => {
+    try {
+      const res = await fetch(`/api/todo-list/suggestions/${encodeURIComponent(chatId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ todos }),
+      });
+      if (!res.ok) return;
+      void globalMutate("todo-suggestions-disk");
+    } catch {
+      // best-effort; analyze route may have saved already
+    }
+  }, []);
+
+  const schedulePersistChatSuggestions = useCallback(
+    (chatId: string, todos: TodoSuggestionItem[]) => {
+      const pending = persistDebounceRef.current.get(chatId);
+      if (pending) clearTimeout(pending);
+      persistDebounceRef.current.set(
+        chatId,
+        setTimeout(() => {
+          persistDebounceRef.current.delete(chatId);
+          void persistChatSuggestions(chatId, todos);
+        }, 400)
+      );
+    },
+    [persistChatSuggestions]
+  );
+  const schedulePersistRef = useRef(schedulePersistChatSuggestions);
+  schedulePersistRef.current = schedulePersistChatSuggestions;
+  const [analyzingChatIds, setAnalyzingChatIds] = useState<string[]>([]);
+  const [analyzeErrorByChatId, setAnalyzeErrorByChatId] = useState<Record<string, string>>({});
+  const [loadingAllSuggestions, setLoadingAllSuggestions] = useState(false);
+  const [loadingAllProgress, setLoadingAllProgress] = useState<{ done: number; total: number; messagesLoaded: number } | null>(null);
+  /** Per-chat message fetch page count during analyze (for "Lade Nachrichten #N" display). */
+  const [loadingMessagePagesByChatId, setLoadingMessagePagesByChatId] = useState<Record<string, number>>({});
+  const [lastAnalyzedMessageCount, setLastAnalyzedMessageCount] = useState<number | null>(null);
+  const [loadingAllError, setLoadingAllError] = useState<string | null>(null);
+  const [acceptAllResult, setAcceptAllResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [todoStatus, setTodoStatus] = useState<"open" | "completed" | "archived" | "snoozed" | "all">("open");
+  const [dueFilter, setDueFilter] = useState<"any" | "due_today" | "overdue">("any");
+  const [searchQ, setSearchQ] = useState("");
+  const [listIdFilter, setListIdFilter] = useState<string | null>(null);
+  const [sourceAccountIdFilter, setSourceAccountIdFilter] = useState<string | null>(null);
+  const [sourceChatIdFilter, setSourceChatIdFilter] = useState<string | null>(null);
+  const [sort, setSort] = useState<"due" | "priority" | "title" | "created" | "sort_order">("due");
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
+  const [draggedTodoId, setDraggedTodoId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [refreshingTodos, setRefreshingTodos] = useState(false);
+  const [smartSortLoading, setSmartSortLoading] = useState(false);
+  const [smartSortError, setSmartSortError] = useState<string | null>(null);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  /** Draft while editing todo notes (controlled textarea; Enter saves, Shift+Enter newline). */
+  const [editingNotesDraft, setEditingNotesDraft] = useState("");
+  /** Skip blur-save when Esc cancels inline todo field editing. */
+  const todoTitleEscapeCancelRef = useRef(false);
+  const todoDueEscapeCancelRef = useRef(false);
+  const todoNotesEscapeCancelRef = useRef(false);
+  const [editingDueId, setEditingDueId] = useState<string | null>(null);
+  const [analyzeStep, setAnalyzeStep] = useState("");
+  const [loadingAllStep, setLoadingAllStep] = useState("");
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [chatListView, setChatListView] = useState<ChatListViewType>("all");
+  const [analyzePromptSuffix, setAnalyzePromptSuffix] = useState("");
+  const [onePromptAllChats, setOnePromptAllChats] = useState("");
+  const [onePromptDialogOpen, setOnePromptDialogOpen] = useState(false);
+  const [onePromptResults, setOnePromptResults] = useState<OnePromptDialogResult[]>([]);
+  const [onePromptRunLoading, setOnePromptRunLoading] = useState(false);
+  const [onePromptRunError, setOnePromptRunError] = useState<string | null>(null);
+  const [onePromptAcceptingByChatId, setOnePromptAcceptingByChatId] = useState<Record<string, boolean>>({});
+  const [onePromptTargetCount, setOnePromptTargetCount] = useState(0);
+  const [onePromptProcessedCount, setOnePromptProcessedCount] = useState(0);
+  const [analyzeScanMode, setAnalyzeScanMode] = useState<TodoAnalyzeScanMode>(
+    () => getTodoAnalyzePrefs().scanMode
+  );
+  const [analyzeMaxAgeValue, setAnalyzeMaxAgeValue] = useState<number>(
+    () => getTodoAnalyzePrefs().maxAgeValue
+  );
+  const [analyzeMaxAgeUnit, setAnalyzeMaxAgeUnit] = useState<TodoAnalyzeMaxAgeUnit>(
+    () => getTodoAnalyzePrefs().maxAgeUnit
+  );
+  const [analyzeMaxMessages, setAnalyzeMaxMessages] = useState<number>(
+    () => getTodoAnalyzePrefs().maxMessages
+  );
+  const [analyzeAttachmentMode, setAnalyzeAttachmentMode] = useState<TodoAnalyzeAttachmentMode>(
+    () => getTodoAnalyzePrefs().attachmentMode
+  );
+  const [analyzeForce, setAnalyzeForce] = useState(() => getTodoAnalyzePrefs().analyzeForce);
+  const [usageDays, setUsageDays] = useState(() => getTodoAnalyzePrefs().usageDays);
+  const [showBatchPromptSuffixModal, setShowBatchPromptSuffixModal] = useState(false);
+  const [batchPromptSuffixDraft, setBatchPromptSuffixDraft] = useState("");
+  const [googleSyncLoadingByTodoId, setGoogleSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
+  const [googleSyncResultByTodoId, setGoogleSyncResultByTodoId] = useState<Record<string, { kind: "ok" | "error"; message: string }>>({});
+  const [reclaimSyncLoadingByTodoId, setReclaimSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
+  const [reclaimSyncResultByTodoId, setReclaimSyncResultByTodoId] = useState<Record<string, { kind: "ok" | "error"; message: string }>>({});
+  const [editingSuggestion, setEditingSuggestion] = useState<{
+    chatId: string;
+    index: number;
+    focus?: SuggestionEditFocus;
+  } | null>(null);
+  /** Stable order for progressive batch suggestions (append-by-arrival) to avoid viewport jumps. */
+  const [batchSuggestionChatOrder, setBatchSuggestionChatOrder] = useState<string[]>([]);
+  const [suggestionContextMenu, setSuggestionContextMenu] = useState<{ chatId: string; x: number; y: number } | null>(null);
+  const [col1Width, setCol1Width] = useState(256);
+  const [col2Width, setCol2Width] = useState(420);
+  const containerRef = useRef<HTMLDivElement>(null);
+  /** Scrollable column for suggestions. */
+  const suggestionsColumnRef = useRef<HTMLDivElement>(null);
+  /** AbortController for batch/selection analyze (Vorschläge für alle / Auswahl analysieren). */
+  const analyzeBatchAbortRef = useRef<AbortController | null>(null);
+  /** AbortController for single-chat analyze (Todo-Vorschläge laden). */
+  const analyzeSingleAbortRef = useRef<AbortController | null>(null);
+  /** Scroll container for "Alle Todos" list; used to preserve scroll when a todo is moved to remind-later. */
+  const todosListScrollRef = useRef<HTMLUListElement>(null);
+  /** Saved scrollTop to restore after reminder is set (item leaves open list). */
+  const saveScrollTopAfterReminderRef = useRef<number | null>(null);
+  const todoListPersistSnapshotRef = useRef<TodoListPersistSnapshot>(DEFAULT_TODO_SUGGESTIONS_VIEW);
+
+  const patchAnalyzePrefs = useCallback((patch: Partial<SavedTodoAnalyzePrefs>) => {
+    setTodoAnalyzePrefs(patch);
+  }, []);
+
+  const MIN_COL1 = 160;
+  const MIN_COL2 = 240;
+  const MIN_COL3 = 200;
+  const HANDLE_WIDTH = 6;
+
+  const handleResizeMouseDown = useCallback((col: 1 | 2) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startCol1 = col1Width;
+    const startWidth = col === 1 ? col1Width : col2Width;
+    const state = { col, startX: e.clientX, startWidth, startCol1Width: startCol1 };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (moveEvent: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const delta = moveEvent.clientX - state.startX;
+      if (state.col === 1) {
+        const maxCol1 = rect.width - MIN_COL2 - MIN_COL3 - 2 * HANDLE_WIDTH;
+        setCol1Width(Math.min(maxCol1, Math.max(MIN_COL1, state.startWidth + delta)));
+      } else {
+        const maxCol2 = rect.width - state.startCol1Width - MIN_COL3 - 2 * HANDLE_WIDTH;
+        setCol2Width(Math.min(maxCol2, Math.max(MIN_COL2, state.startWidth + delta)));
+      }
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [col1Width, col2Width]);
+
+  /** Esc: cancel inline editors / modals first (no blur-save), then reset chat UI. */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (editingSuggestion) {
+        return;
+      }
+      if (editingNotesId) {
+        e.preventDefault();
+        todoNotesEscapeCancelRef.current = true;
+        setEditingNotesId(null);
+        return;
+      }
+      if (editingTodoId) {
+        e.preventDefault();
+        todoTitleEscapeCancelRef.current = true;
+        setEditingTodoId(null);
+        return;
+      }
+      if (editingDueId) {
+        e.preventDefault();
+        todoDueEscapeCancelRef.current = true;
+        setEditingDueId(null);
+        return;
+      }
+      if (showBatchPromptSuffixModal) {
+        e.preventDefault();
+        setBatchPromptSuffixDraft(analyzePromptSuffix);
+        setShowBatchPromptSuffixModal(false);
+        return;
+      }
+      if (onePromptDialogOpen) {
+        e.preventDefault();
+        setOnePromptDialogOpen(false);
+        return;
+      }
+      setSelectedChatIds([]);
+      setSelectedChatId(null);
+      setLeftTab("chats");
+      setChatContextMenu(null);
+      setSuggestionContextMenu(null);
+      lastClickedIndexRef.current = null;
+      (document.activeElement as HTMLElement)?.blur?.();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    editingSuggestion,
+    editingNotesId,
+    editingTodoId,
+    editingDueId,
+    showBatchPromptSuffixModal,
+    onePromptDialogOpen,
+    analyzePromptSuffix,
+  ]);
+
+  useEffect(() => {
+    setChatListView(getChatViewFilter().chatListView);
+  }, []);
+
+  /** Cmd/Ctrl+Z: restore rejected suggestions, un-accept single/batch (delete created todos + restore list). */
+  useEffect(() => {
+    registerTodoSuggestionUndoCallbacks({
+      insertSuggestionAt: (chatId, index, item) => {
+        setSuggestionsByChat((prev) => {
+          const list = prev[chatId] ?? [];
+          const next = [...list];
+          const at = Math.min(Math.max(0, index), next.length);
+          next.splice(at, 0, { ...item });
+          schedulePersistRef.current(chatId, next);
+          return { ...prev, [chatId]: next };
+        });
+      },
+      setSuggestionsForChat: (chatId, items) => {
+        const next = items.map((i) => ({ ...i }));
+        schedulePersistRef.current(chatId, next);
+        setSuggestionsByChat((prev) => ({
+          ...prev,
+          [chatId]: next,
+        }));
+      },
+    });
+    return () => {
+      clearTodoSuggestionUndoFrames();
+      registerTodoSuggestionUndoCallbacks(null);
+    };
+  }, []);
+
+  /** Load persisted Vorschläge view fields (prompts, tab, search) before paint. */
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    const view = readStoredTodoSuggestionsView();
+    setAnalyzePromptSuffix(view.promptSuffix);
+    setOnePromptAllChats(view.onePromptAllChats);
+    setLeftTab(view.leftTab);
+    setChatSearchQuery(view.chatSearchQuery);
+    todoListPersistSnapshotRef.current = view;
+  }, []);
+
+  useLayoutEffect(() => {
+    todoListPersistSnapshotRef.current = {
+      promptSuffix: analyzePromptSuffix,
+      onePromptAllChats,
+      leftTab,
+      chatSearchQuery,
+    };
+  }, [analyzePromptSuffix, onePromptAllChats, leftTab, chatSearchQuery]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const flushTodoSuggestionsView = () => {
+      writeStoredTodoSuggestionsView(todoListPersistSnapshotRef.current);
+    };
+    window.addEventListener("pagehide", flushTodoSuggestionsView);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushTodoSuggestionsView();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flushTodoSuggestionsView);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = window.setTimeout(() => {
+      writeStoredTodoSuggestionsView(todoListPersistSnapshotRef.current);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [analyzePromptSuffix, onePromptAllChats, leftTab, chatSearchQuery]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(IGNORED_CHATS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      localStorage.removeItem(IGNORED_CHATS_STORAGE_KEY);
+      if (!Array.isArray(parsed)) return;
+      const legacy = parsed.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+      if (legacy.length === 0) return;
+      void (async () => {
+        try {
+          const res = await fetch("/api/settings/todo-ignored-chats");
+          const data = (await res.json()) as { chatIds?: string[] };
+          const existing = data.chatIds ?? [];
+          const merged = [...new Set([...existing, ...legacy])];
+          await fetch("/api/settings/todo-ignored-chats", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatIds: merged }),
+          });
+          void mutateIgnoredChats();
+        } catch {
+          /* best-effort migration */
+        }
+      })();
+    } catch {
+      localStorage.removeItem(IGNORED_CHATS_STORAGE_KEY);
+    }
+  }, [mutateIgnoredChats]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    sessionStorage.removeItem(LEGACY_TODO_SUGGESTIONS_SESSION_KEY);
+  }, []);
+
+  useEffect(() => {
+    if (!chatContextMenu && !suggestionContextMenu) return;
+    const close = () => setChatContextMenu(null);
+    const closeSuggestion = () => setSuggestionContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("click", closeSuggestion);
+    return () => window.removeEventListener("click", close);
+  }, [chatContextMenu, suggestionContextMenu]);
+
+  const TODO_ANALYSIS_STEPS = ["Lade Nachrichten…", "Transkribiere & Bilder…", "KI extrahiert Todos…"];
+  const isCurrentChatAnalyzing = selectedChatId != null && analyzingChatIds.includes(selectedChatId);
+  const [analyzeStepIndex, setAnalyzeStepIndex] = useState(0);
+  useEffect(() => {
+    if (!isCurrentChatAnalyzing) {
+      setAnalyzeStep("");
+      setAnalyzeStepIndex(0);
+      return;
+    }
+    setAnalyzeStep(TODO_ANALYSIS_STEPS[0]);
+    setAnalyzeStepIndex(0);
+    let i = 0;
+    const id = setInterval(() => {
+      i = (i + 1) % TODO_ANALYSIS_STEPS.length;
+      setAnalyzeStepIndex(i);
+      setAnalyzeStep(TODO_ANALYSIS_STEPS[i]);
+    }, 2500);
+    return () => clearInterval(id);
+  }, [isCurrentChatAnalyzing]);
+
+  useEffect(() => {
+    if (!loadingAllSuggestions) {
+      setLoadingAllStep("");
+      return;
+    }
+    setLoadingAllStep(TODO_ANALYSIS_STEPS[0]);
+    let i = 0;
+    const id = setInterval(() => {
+      i = (i + 1) % TODO_ANALYSIS_STEPS.length;
+      setLoadingAllStep(TODO_ANALYSIS_STEPS[i]);
+    }, 2500);
+    return () => clearInterval(id);
+  }, [loadingAllSuggestions]);
+
+  const {
+    data: accounts = [],
+    error: accountsError,
+    isLoading: accountsLoading,
+    mutate: mutateAccounts,
+  } = useSWR<BeeperAccount[]>("accounts", fetchAccounts);
+
+  const hasRestoredAccountRef = useRef(false);
+  useEffect(() => {
+    if (accounts.length === 0 || hasRestoredAccountRef.current) return;
+    const saved = getTodoListAccountId();
+    if (!saved) return;
+    const exists = accounts.some((a) => getAccountId(a) === saved);
+    if (exists) {
+      setSelectedAccountId(saved);
+      hasRestoredAccountRef.current = true;
+    }
+  }, [accounts]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (sessionStorage.getItem("todoPromptChanged") === "1") {
+      sessionStorage.removeItem("todoPromptChanged");
+      setSuggestionsByChat({});
+      setAcceptAllResult(null);
+      void globalMutate("todo-suggestions-disk", {}, false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setLastAnalyzedMessageCount(null);
+  }, [selectedChatId]);
+
+  const accountId = selectedAccountId ?? (accounts.length > 0 ? getAccountId(accounts[0]) : null);
+  const isWhatsAppAccount =
+    accounts.find((a) => getAccountId(a) === accountId)?.network?.toLowerCase() === "whatsapp";
+
+  const {
+    data: chats = [],
+    error: chatsError,
+    isLoading: chatsLoading,
+    mutate: mutateChats,
+  } = useSWR<BeeperChat[]>(
+    accountId ? ["todo-chats", accountId] : null,
+    () => (accountId ? fetchChatsForAccount(accountId) : [])
+  );
+
+  const chatIdsForSuggestions = chats.map((c) => c.id).filter(Boolean);
+  const suggestionsSwrKey =
+    chatIdsForSuggestions.length > 0
+      ? (["todo-suggestions-disk", chatIdsForSuggestions.join(",")] as const)
+      : ("todo-suggestions-disk" as const);
+
+  const { data: diskSuggestions } = useSWR<Record<string, TodoSuggestionItem[]>>(
+    suggestionsSwrKey,
+    async () => {
+      const query =
+        chatIdsForSuggestions.length > 0
+          ? `?chat_ids=${chatIdsForSuggestions.map(encodeURIComponent).join(",")}`
+          : "";
+      const res = await fetch(`/api/todo-list/suggestions${query}`);
+      const data = (await res.json().catch(() => ({}))) as {
+        suggestions?: Record<string, TodoSuggestionItem[]>;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Vorschläge-Cache konnte nicht geladen werden");
+      return data.suggestions ?? {};
+    },
+    { revalidateOnFocus: true, dedupingInterval: 5000 }
+  );
+
+  useEffect(() => {
+    if (!diskSuggestions) return;
+    setSuggestionsByChat((prev) => ({ ...prev, ...diskSuggestions }));
+    suggestionsHydratedRef.current = true;
+  }, [diskSuggestions]);
+
+  const { data: googleTasksStatus, mutate: mutateGoogleTasksStatus } = useSWR<GoogleTasksStatus>(
+    "google-tasks-status",
+    () => fetch("/api/google-tasks/status").then((r) => r.json()),
+    { revalidateOnFocus: true }
+  );
+  const { data: reclaimStatus, mutate: mutateReclaimStatus } = useSWR<ReclaimStatus>(
+    "reclaim-status",
+    () => fetch("/api/reclaim/status").then((r) => r.json()),
+    { revalidateOnFocus: true }
+  );
+  const { data: todoListSettings } = useSWR<TodoListSettings>(
+    "todo-list-settings",
+    () => fetch("/api/settings/todo-list").then((r) => r.json()),
+    { revalidateOnFocus: true }
+  );
+  const todoSyncTarget = todoListSettings?.todoSyncTarget === "reclaim" ? "reclaim" : "google";
+
+  const filteredChatsForList = useMemo(() => {
+    let list = chats;
+    switch (chatListView) {
+      case "private":
+        list = list.filter((c) => !c.isArchived && (c.type ?? "").toLowerCase() !== "group");
+        break;
+      case "groups":
+        list = list.filter((c) => (c.type ?? "").toLowerCase() === "group");
+        break;
+      case "archived":
+        list = list.filter((c) => !!c.isArchived);
+        break;
+      default:
+        break;
+    }
+    const q = chatSearchQuery.trim();
+    if (!q) return list;
+    return list.filter((c) => chatMatchesSearchQuery(c, q, { searchPhones: isWhatsAppAccount }));
+  }, [chats, chatListView, chatSearchQuery, isWhatsAppAccount]);
+
+  const chatsAvailableForAnalysis = useMemo(
+    () => filteredChatsForList.filter((c) => !ignoredChatIds.includes(c.id)),
+    [filteredChatsForList, ignoredChatIds]
+  );
+
+  const analyzeMaxAgeDays = useMemo(() => {
+    const value = Math.max(1, Math.round(analyzeMaxAgeValue || getTodoAnalyzePrefs().maxAgeValue));
+    if (analyzeMaxAgeUnit === "weeks") return value * 7;
+    if (analyzeMaxAgeUnit === "months") return value * 30;
+    return value;
+  }, [analyzeMaxAgeUnit, analyzeMaxAgeValue]);
+
+  const selectedAnalyzeChatCount = useMemo(() => {
+    const baseIds =
+      selectedChatIds.length > 0
+        ? selectedChatIds
+        : selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL
+          ? [selectedChatId]
+          : [];
+    return baseIds.filter((id) => !ignoredChatIds.includes(id)).length;
+  }, [selectedChatIds, selectedChatId, ignoredChatIds]);
+
+  const ignoreChatForFutureSuggestions = useCallback((chatId: string) => {
+    updateIgnoredChatIds((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
+    setSuggestionsByChat((prev) => {
+      schedulePersistRef.current(chatId, []);
+      return { ...prev, [chatId]: [] };
+    });
+    setSuggestionContextMenu(null);
+    if (selectedChatId === chatId) {
+      setSelectedChatId(ALL_CHATS_SENTINEL);
+      setSelectedChatIds([]);
+    }
+  }, [selectedChatId, updateIgnoredChatIds]);
+
+  const chatIds = chats.map((c) => c.id).filter(Boolean);
+  const { data: countByChat = {}, mutate: mutateCount } = useSWR<Record<string, number>>(
+    chatIds.length > 0 ? ["todo-count-by-chat", chatIds.join(",")] : null,
+    () =>
+      fetch(`/api/todo-list/todos/count-by-chat?chatIds=${chatIds.map(encodeURIComponent).join(",")}`)
+        .then((r) => r.json())
+  );
+
+  const todosParams = new URLSearchParams();
+  todosParams.set("status", todoStatus);
+  todosParams.set("dueFilter", dueFilter);
+  todosParams.set("sort", sort);
+  todosParams.set("order", order);
+  if (searchQ.trim()) todosParams.set("q", searchQ.trim());
+  if (listIdFilter) todosParams.set("list_id", listIdFilter);
+  if (sourceAccountIdFilter) todosParams.set("source_account_id", sourceAccountIdFilter);
+  if (sourceChatIdFilter) todosParams.set("source_chat_id", sourceChatIdFilter);
+  const { data: todos = [], mutate: mutateTodos } = useSWR<TodoItem[]>(
+    ["todo-list-todos", todosParams.toString()],
+    () => fetch(`/api/todo-list/todos?${todosParams}`).then((r) => r.json())
+  );
+
+  /** Restore scroll position after a todo was moved to remind-later so the list doesn't jump. */
+  useEffect(() => {
+    const saved = saveScrollTopAfterReminderRef.current;
+    const el = todosListScrollRef.current;
+    if (el != null && saved != null) {
+      el.scrollTop = saved;
+      saveScrollTopAfterReminderRef.current = null;
+    }
+  }, [todos]);
+
+  const { data: lists = [], mutate: mutateLists } = useSWR<TodoListRecord[]>(
+    "todo-lists",
+    () => fetch("/api/todo-list/lists").then((r) => r.json())
+  );
+
+  const { data: usageSummary } = useSWR<OpenAiUsageSummary>(
+    ["openai-usage-summary", usageDays],
+    () => fetch(`/api/openai-usage/summary?days=${encodeURIComponent(String(usageDays))}`).then((r) => r.json())
+  );
+
+  const runAnalyze = useCallback(async () => {
+    if (!selectedChatId) return;
+    setSuggestionsByChat({});
+    const chatId = selectedChatId;
+    if (analyzeSingleAbortRef.current) analyzeSingleAbortRef.current.abort();
+    const controller = new AbortController();
+    analyzeSingleAbortRef.current = controller;
+    const signal = controller.signal;
+    const chat = chats.find((c) => c.id === chatId);
+    const contactName =
+      (chat?.name ?? (chat as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? undefined;
+    setAnalyzingChatIds((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
+    setLoadingMessagePagesByChatId((prev) => ({ ...prev, [chatId]: 0 }));
+    setAnalyzeErrorByChatId((prev) => {
+      const next = { ...prev };
+      delete next[chatId];
+      return next;
+    });
+    setAcceptAllResult(null);
+    setLastAnalyzedMessageCount(null);
+    try {
+      const res = await fetch("/api/todo-list/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId,
+          accountId: accountId ?? undefined,
+          contactName: contactName ?? undefined,
+          promptSuffix: analyzePromptSuffix.trim() || undefined,
+          messageScanMode: analyzeScanMode,
+          maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
+          maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
+          attachmentMode: analyzeAttachmentMode,
+          force: analyzeForce,
+          stream: true,
+        }),
+        signal,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string })?.error ?? "Analyse fehlgeschlagen");
+      }
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.includes("application/x-ndjson") && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let result: { todos: unknown[]; message_count: number } | null = null;
+        while (true) {
+          if (signal.aborted) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const event = JSON.parse(trimmed) as { type: string; page?: number; todos?: unknown[]; message_count?: number; error?: string };
+              if (event.type === "messages_page" && typeof event.page === "number") {
+                setLoadingMessagePagesByChatId((prev) => ({ ...prev, [chatId]: event.page! }));
+              } else if (event.type === "result") {
+                result = { todos: event.todos ?? [], message_count: event.message_count ?? 0 };
+              } else if (event.type === "error") {
+                throw new Error(event.error ?? "Analyse fehlgeschlagen");
+              }
+            } catch (e) {
+              if (e instanceof SyntaxError) continue;
+              throw e;
+            }
+          }
+        }
+        if (result) {
+          const list = toTodoSuggestionList(result.todos);
+          setSuggestionsByChat((prev) => ({ ...prev, [chatId]: list }));
+          if (typeof result.message_count === "number") setLastAnalyzedMessageCount(result.message_count);
+        }
+      } else {
+        const data = await res.json();
+        const list = toTodoSuggestionList((data as { todos?: unknown }).todos);
+        setSuggestionsByChat((prev) => ({ ...prev, [chatId]: list }));
+        const msgCount = typeof (data as { message_count?: number }).message_count === "number" ? (data as { message_count: number }).message_count : null;
+        if (msgCount != null) setLastAnalyzedMessageCount(msgCount);
+      }
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+      setAnalyzeErrorByChatId((prev) => ({
+        ...prev,
+        [chatId]: e instanceof Error ? e.message : "Analyse fehlgeschlagen",
+      }));
+    } finally {
+      setLoadingMessagePagesByChatId((prev) => {
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      });
+      analyzeSingleAbortRef.current = null;
+      setAnalyzingChatIds((prev) => prev.filter((id) => id !== chatId));
+    }
+  }, [selectedChatId, accountId, chats, analyzePromptSuffix, analyzeScanMode, analyzeMaxMessages, analyzeMaxAgeDays, analyzeAttachmentMode, analyzeForce]);
+
+  const cancelAnalyzeSingle = useCallback(() => {
+    if (analyzeSingleAbortRef.current) {
+      analyzeSingleAbortRef.current.abort();
+      analyzeSingleAbortRef.current = null;
+    }
+  }, []);
+
+  const runAnalyzeForAllVisible = useCallback(async (suffixOverride?: string, onePromptOverride?: string) => {
+    if (chatsAvailableForAnalysis.length === 0 || !accountId) return;
+    setSuggestionsByChat({});
+    setBatchSuggestionChatOrder([]);
+    if (analyzeBatchAbortRef.current) analyzeBatchAbortRef.current.abort();
+    const controller = new AbortController();
+    analyzeBatchAbortRef.current = controller;
+    const signal = controller.signal;
+    const promptSuffix = (suffixOverride ?? analyzePromptSuffix).trim() || undefined;
+    const onePrompt = (onePromptOverride ?? "").trim() || undefined;
+    setLoadingAllSuggestions(true);
+    setLoadingAllError(null);
+    setLoadingMessagePagesByChatId({});
+    setLoadingAllProgress({ done: 0, total: chatsAvailableForAnalysis.length, messagesLoaded: 0 });
+    const ids = chatsAvailableForAnalysis.map((c) => c.id).filter(Boolean);
+    const doneRef = { current: 0 };
+    const failedRef = { current: 0 };
+    const stoppedEarlyAfterFailuresRef = { current: false };
+    const messagesLoadedRef = { current: 0 };
+    const chatNameById = new Map(
+      chatsAvailableForAnalysis.map((c) => [c.id, (c.name ?? (c as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? ""])
+    );
+    try {
+      await runWithConcurrency(TODO_ANALYZE_CONCURRENCY, ids, async (chatId) => {
+        if (signal.aborted || failedRef.current >= TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP) return;
+        const contactName = chatNameById.get(chatId) || undefined;
+        try {
+          const res = await fetch("/api/todo-list/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chatId,
+              accountId,
+              contactName,
+              promptSuffix: onePrompt ? undefined : promptSuffix,
+              onePrompt,
+              messageScanMode: analyzeScanMode,
+              maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
+              maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
+              attachmentMode: analyzeAttachmentMode,
+              force: analyzeForce,
+              stream: true,
+            }),
+            signal,
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error((data as { error?: string })?.error ?? "Analyse fehlgeschlagen");
+          }
+          const contentType = res.headers.get("content-type") ?? "";
+          if (contentType.includes("application/x-ndjson") && res.body) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let result: { todos: unknown[]; message_count: number } | null = null;
+            while (true) {
+              if (signal.aborted) break;
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() ?? "";
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                try {
+                  const event = JSON.parse(trimmed) as { type: string; page?: number; todos?: unknown[]; message_count?: number; error?: string };
+                  if (event.type === "messages_page" && typeof event.page === "number") {
+                    setLoadingMessagePagesByChatId((prev) => ({ ...prev, [chatId]: event.page! }));
+                  } else if (event.type === "result") {
+                    result = { todos: event.todos ?? [], message_count: event.message_count ?? 0 };
+                  } else if (event.type === "error") {
+                    throw new Error(event.error ?? "Analyse fehlgeschlagen");
+                  }
+                } catch (err) {
+                  if (!(err instanceof SyntaxError)) throw err;
+                }
+              }
+            }
+            if (result) {
+              const todos = toTodoSuggestionList(result.todos);
+              const msgCount = typeof result.message_count === "number" ? result.message_count : 0;
+              messagesLoadedRef.current += msgCount;
+              setBatchSuggestionChatOrder((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
+              setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
+            }
+          } else {
+            const data = await res.json();
+            const todos = toTodoSuggestionList((data as { todos?: unknown }).todos);
+            const msgCount = typeof (data as { message_count?: number }).message_count === "number" ? (data as { message_count: number }).message_count : 0;
+            messagesLoadedRef.current += msgCount;
+            setBatchSuggestionChatOrder((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
+            setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
+          }
+        } catch (e) {
+          if ((e as Error).name !== "AbortError") {
+            failedRef.current += 1;
+            if (failedRef.current >= TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP) {
+              stoppedEarlyAfterFailuresRef.current = true;
+              controller.abort();
+            }
+          }
+        } finally {
+          if (!signal.aborted) {
+            doneRef.current += 1;
+            setLoadingAllProgress({ done: doneRef.current, total: ids.length, messagesLoaded: messagesLoadedRef.current });
+            setLoadingMessagePagesByChatId((prev) => {
+              const next = { ...prev };
+              delete next[chatId];
+              return next;
+            });
+          }
+        }
+      });
+    } finally {
+      analyzeBatchAbortRef.current = null;
+      setLoadingAllSuggestions(false);
+      setLoadingAllProgress(null);
+      setLoadingMessagePagesByChatId({});
+      if (failedRef.current > 0) {
+        let msg = `${failedRef.current} von ${ids.length} Chats konnten nicht analysiert werden.`;
+        if (stoppedEarlyAfterFailuresRef.current) {
+          msg += ` Abgebrochen nach ${TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP} Fehlern.`;
+        }
+        setLoadingAllError(msg);
+      }
+    }
+  }, [chatsAvailableForAnalysis, accountId, analyzePromptSuffix, analyzeScanMode, analyzeMaxMessages, analyzeMaxAgeDays, analyzeAttachmentMode, analyzeForce]);
+
+  const runOnePromptForAllVisible = useCallback(async () => {
+    const onePrompt = onePromptAllChats.trim();
+    if (!onePrompt) {
+      setLoadingAllError("Bitte zuerst den One-Prompt eintragen.");
+      return;
+    }
+    if (!accountId || chatsAvailableForAnalysis.length === 0) {
+      setLoadingAllError("Keine sichtbaren Chats für die Analyse.");
+      return;
+    }
+    setOnePromptRunError(null);
+    setOnePromptRunLoading(true);
+    setOnePromptResults([]);
+    setOnePromptProcessedCount(0);
+    setOnePromptDialogOpen(true);
+    try {
+      const targets = chatsAvailableForAnalysis.map((chat) => ({
+        chatId: chat.id,
+        chatName: (chat.name ?? (chat as { participants?: Array<{ name?: string }> }).participants?.[0]?.name ?? "").trim(),
+      }));
+      setOnePromptTargetCount(targets.length);
+      const res = await fetch("/api/todo-list/one-prompt-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId,
+          onePrompt,
+          targets,
+          messageScanMode: analyzeScanMode,
+          maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
+          maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
+          attachmentMode: analyzeAttachmentMode,
+          force: true,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        results?: OnePromptDialogResult[];
+        summary?: { processed?: number };
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "One-Prompt Analyse fehlgeschlagen");
+      }
+      setOnePromptResults(Array.isArray(data.results) ? data.results : []);
+      setOnePromptProcessedCount(typeof data.summary?.processed === "number" ? data.summary.processed : targets.length);
+    } catch (error) {
+      setOnePromptRunError(error instanceof Error ? error.message : "One-Prompt Analyse fehlgeschlagen");
+    } finally {
+      setOnePromptRunLoading(false);
+    }
+  }, [
+    onePromptAllChats,
+    accountId,
+    chatsAvailableForAnalysis,
+    analyzeScanMode,
+    analyzeMaxMessages,
+    analyzeMaxAgeDays,
+    analyzeAttachmentMode,
+  ]);
+
+  const acceptOnePromptResult = useCallback(
+    async (result: OnePromptDialogResult) => {
+      if (!result.todo) return;
+      setOnePromptAcceptingByChatId((prev) => ({ ...prev, [result.chatId]: true }));
+      try {
+        const res = await fetch("/api/todo-list/todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: result.todo.title,
+            notes: result.todo.notes ?? result.output,
+            ...suggestionToDueApiFields({ due: result.todo.due, due_time: null }),
+            priority: result.todo.priority ?? 3,
+            list_id: listIdFilter ?? undefined,
+            source_chat_id: result.chatId,
+            source_chat_name: result.chatName,
+            source_account_id: accountId ?? undefined,
+            skipDuplicates: true,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) throw new Error(data.error ?? "Todo konnte nicht erstellt werden");
+        await Promise.all([mutateTodos(), mutateCount()]);
+        setOnePromptResults((prev) => prev.filter((x) => x.chatId !== result.chatId));
+      } catch (error) {
+        setOnePromptRunError(error instanceof Error ? error.message : "Todo konnte nicht erstellt werden");
+      } finally {
+        setOnePromptAcceptingByChatId((prev) => ({ ...prev, [result.chatId]: false }));
+      }
+    },
+    [accountId, listIdFilter, mutateCount, mutateTodos]
+  );
+
+  const acceptAllOnePromptResults = useCallback(async () => {
+    const matchedOnly = onePromptResults.filter((r) => r.matched);
+    if (matchedOnly.length === 0) return;
+    try {
+      const payload = matchedOnly
+        .filter((r) => r.todo)
+        .map((r) => ({
+          title: r.todo!.title,
+          notes: r.todo!.notes ?? r.output,
+          ...suggestionToDueApiFields({ due: r.todo!.due, due_time: null }),
+          priority: r.todo!.priority ?? 3,
+          list_id: listIdFilter ?? undefined,
+          source_chat_id: r.chatId,
+          source_chat_name: r.chatName,
+          source_account_id: accountId ?? undefined,
+        }));
+      if (payload.length === 0) return;
+      const res = await fetch("/api/todo-list/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ todos: payload, skipDuplicates: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Todos konnten nicht erstellt werden");
+      await Promise.all([mutateTodos(), mutateCount()]);
+      setOnePromptResults([]);
+    } catch (error) {
+      setOnePromptRunError(error instanceof Error ? error.message : "Todos konnten nicht erstellt werden");
+    }
+  }, [onePromptResults, listIdFilter, accountId, mutateTodos, mutateCount]);
+
+  /** Analyze only the currently selected chat ids (multi-selection). */
+  const runAnalyzeForSelection = useCallback(async () => {
+    const baseIds = selectedChatIds.length > 0 ? selectedChatIds : (selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? [selectedChatId] : []);
+    const ids = baseIds.filter((id) => !ignoredChatIds.includes(id));
+    if (ids.length === 0 || !accountId) return;
+    setSuggestionsByChat({});
+    setBatchSuggestionChatOrder([]);
+    if (analyzeBatchAbortRef.current) analyzeBatchAbortRef.current.abort();
+    const controller = new AbortController();
+    analyzeBatchAbortRef.current = controller;
+    const signal = controller.signal;
+    setLoadingAllSuggestions(true);
+    setLoadingAllError(null);
+    setLoadingMessagePagesByChatId({});
+    setLoadingAllProgress({ done: 0, total: ids.length, messagesLoaded: 0 });
+    const doneRef = { current: 0 };
+    const failedRef = { current: 0 };
+    const stoppedEarlyAfterFailuresRef = { current: false };
+    const messagesLoadedRef = { current: 0 };
+    const chatNameById = new Map(
+      chatsAvailableForAnalysis.map((c) => [c.id, (c.name ?? (c as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? ""])
+    );
+    try {
+      await runWithConcurrency(TODO_ANALYZE_CONCURRENCY, ids, async (chatId) => {
+        if (signal.aborted || failedRef.current >= TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP) return;
+        const contactName = chatNameById.get(chatId) || undefined;
+        try {
+          const res = await fetch("/api/todo-list/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chatId,
+              accountId,
+              contactName,
+              promptSuffix: analyzePromptSuffix.trim() || undefined,
+              messageScanMode: analyzeScanMode,
+              maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
+              maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
+              attachmentMode: analyzeAttachmentMode,
+              force: analyzeForce,
+              stream: true,
+            }),
+            signal,
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error((data as { error?: string })?.error ?? "Analyse fehlgeschlagen");
+          }
+          const contentType = res.headers.get("content-type") ?? "";
+          if (contentType.includes("application/x-ndjson") && res.body) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let result: { todos: unknown[]; message_count: number } | null = null;
+            while (true) {
+              if (signal.aborted) break;
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() ?? "";
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                try {
+                  const event = JSON.parse(trimmed) as { type: string; page?: number; todos?: unknown[]; message_count?: number; error?: string };
+                  if (event.type === "messages_page" && typeof event.page === "number") {
+                    setLoadingMessagePagesByChatId((prev) => ({ ...prev, [chatId]: event.page! }));
+                  } else if (event.type === "result") {
+                    result = { todos: event.todos ?? [], message_count: event.message_count ?? 0 };
+                  } else if (event.type === "error") {
+                    throw new Error(event.error ?? "Analyse fehlgeschlagen");
+                  }
+                } catch (err) {
+                  if (!(err instanceof SyntaxError)) throw err;
+                }
+              }
+            }
+            if (result) {
+              const todos = toTodoSuggestionList(result.todos);
+              const msgCount = typeof result.message_count === "number" ? result.message_count : 0;
+              messagesLoadedRef.current += msgCount;
+              setBatchSuggestionChatOrder((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
+              setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
+            }
+          } else {
+            const data = await res.json();
+            const todos = toTodoSuggestionList((data as { todos?: unknown }).todos);
+            const msgCount = typeof (data as { message_count?: number }).message_count === "number" ? (data as { message_count: number }).message_count : 0;
+            messagesLoadedRef.current += msgCount;
+            setBatchSuggestionChatOrder((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
+            setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
+          }
+        } catch (e) {
+          if ((e as Error).name !== "AbortError") {
+            failedRef.current += 1;
+            if (failedRef.current >= TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP) {
+              stoppedEarlyAfterFailuresRef.current = true;
+              controller.abort();
+            }
+          }
+        } finally {
+          if (!signal.aborted) {
+            doneRef.current += 1;
+            setLoadingAllProgress({ done: doneRef.current, total: ids.length, messagesLoaded: messagesLoadedRef.current });
+            setLoadingMessagePagesByChatId((prev) => {
+              const next = { ...prev };
+              delete next[chatId];
+              return next;
+            });
+          }
+        }
+      });
+    } finally {
+      analyzeBatchAbortRef.current = null;
+      setLoadingAllSuggestions(false);
+      setLoadingAllProgress(null);
+      setLoadingMessagePagesByChatId({});
+      if (failedRef.current > 0) {
+        let msg = `${failedRef.current} von ${ids.length} Chats konnten nicht analysiert werden.`;
+        if (stoppedEarlyAfterFailuresRef.current) {
+          msg += ` Abgebrochen nach ${TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP} Fehlern.`;
+        }
+        setLoadingAllError(msg);
+      }
+    }
+  }, [selectedChatIds, selectedChatId, accountId, analyzePromptSuffix, chatsAvailableForAnalysis, ignoredChatIds, analyzeScanMode, analyzeMaxMessages, analyzeMaxAgeDays, analyzeAttachmentMode, analyzeForce]);
+
+  const cancelAnalyzeBatch = useCallback(() => {
+    if (analyzeBatchAbortRef.current) {
+      analyzeBatchAbortRef.current.abort();
+      analyzeBatchAbortRef.current = null;
+    }
+  }, []);
+
+  const selectedChat = selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? chats.find((c) => c.id === selectedChatId) : null;
+  const selectedChatName = selectedChat
+    ? (selectedChat.name ?? selectedChat.participants?.[0]?.name ?? null)
+    : null;
+
+  const suggestions = selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? (suggestionsByChat[selectedChatId] ?? null) : null;
+
+  const allSuggestionsFlat = useMemo(() => {
+    if (selectedChatId !== ALL_CHATS_SENTINEL) return [];
+    const out: { chatId: string; chatName: string; suggestion: TodoSuggestionItem; indexInChat: number }[] = [];
+    for (const chat of chats) {
+      const chatId = chat.id;
+      const list = suggestionsByChat[chatId];
+      if (!list?.length) continue;
+      const chatName = (chat.name ?? (chat as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name ?? chatId?.slice(0, 8) ?? "Chat") as string;
+      list.forEach((suggestion, indexInChat) => out.push({ chatId, chatName, suggestion, indexInChat }));
+    }
+    return out;
+  }, [selectedChatId, chats, suggestionsByChat]);
+
+  /** During batch load: flat list of suggestions in completion order (append-only), so viewport doesn't jump. */
+  const batchSuggestionsFlat = useMemo(() => {
+    if (!loadingAllSuggestions || !loadingAllProgress) return [];
+    const out: { chatId: string; chatName: string; suggestion: TodoSuggestionItem; indexInChat: number }[] = [];
+    for (const chatId of batchSuggestionChatOrder) {
+      const list = suggestionsByChat[chatId];
+      if (!list?.length) continue;
+      const chat = filteredChatsForList.find((c) => c.id === chatId);
+      const chatName = (chat?.name ?? (chat as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name ?? chatId?.slice(0, 8) ?? "Chat") as string;
+      list.forEach((s, indexInChat) => {
+        out.push({ chatId, chatName, suggestion: s, indexInChat });
+      });
+    }
+    return out;
+  }, [loadingAllSuggestions, loadingAllProgress, suggestionsByChat, filteredChatsForList, batchSuggestionChatOrder]);
+
+  const rejectSuggestion = useCallback((chatId: string, index: number) => {
+    const list = suggestionsByChatRef.current[chatId];
+    if (!list || index < 0 || index >= list.length) return;
+    const item = list[index];
+    pushTodoSuggestionRejectUndo({ chatId, index, item: { ...item } });
+    setSuggestionsByChat((prev) => {
+      const cur = prev[chatId];
+      if (!cur || index < 0 || index >= cur.length) return prev;
+      const next = [...cur];
+      next.splice(index, 1);
+      schedulePersistRef.current(chatId, next);
+      return { ...prev, [chatId]: next };
+    });
+    if (editingSuggestion?.chatId === chatId) setEditingSuggestion(null);
+  }, [editingSuggestion]);
+
+  const updateSuggestion = useCallback((chatId: string, index: number, patch: Partial<TodoSuggestionItem>) => {
+    setSuggestionsByChat((prev) => {
+      const list = prev[chatId];
+      if (!list || index < 0 || index >= list.length) return prev;
+      const next = [...list];
+      next[index] = { ...next[index], ...patch };
+      schedulePersistRef.current(chatId, next);
+      return { ...prev, [chatId]: next };
+    });
+  }, []);
+
+  const acceptSuggestion = useCallback(
+    async (
+      item: TodoSuggestionItem,
+      skipDuplicates: boolean,
+      sourceChatIdOverride?: string | null,
+      sourceChatNameOverride?: string | null,
+      removeFromChatId?: string | null,
+      removeIndex?: number
+    ) => {
+      const sid = sourceChatIdOverride ?? selectedChatId;
+      const sname = sourceChatNameOverride ?? selectedChatName;
+      const res = await fetch("/api/todo-list/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: item.title,
+          ...suggestionToDueApiFields(item),
+          priority: typeof item.priority === "number" ? item.priority : undefined,
+          notes: item.notes ?? undefined,
+          estimated_time_minutes: item.estimated_time_minutes ?? undefined,
+          list_id: listIdFilter ?? undefined,
+          source_chat_id: sid ?? undefined,
+          source_chat_name: sname ?? undefined,
+          source_account_id: accountId ?? undefined,
+          skipDuplicates,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 409) return { duplicate: true };
+      if (res.ok && data.id) {
+        mutateTodos();
+        mutateCount();
+        if (removeFromChatId != null && removeIndex != null && removeIndex >= 0) {
+          pushTodoSuggestionAcceptUndo({
+            chatId: removeFromChatId,
+            index: removeIndex,
+            item: { ...item },
+            todoId: String(data.id),
+          });
+          setSuggestionsByChat((prev) => {
+            const list = prev[removeFromChatId];
+            if (!list || removeIndex >= list.length) return prev;
+            const next = [...list];
+            next.splice(removeIndex, 1);
+            schedulePersistRef.current(removeFromChatId, next);
+            return { ...prev, [removeFromChatId]: next };
+          });
+        }
+        return { duplicate: false };
+      }
+      return { duplicate: false };
+    },
+    [selectedChatId, selectedChatName, accountId, listIdFilter, mutateTodos, mutateCount]
+  );
+
+  const acceptAll = useCallback(async () => {
+    if (!suggestions || suggestions.length === 0) return;
+    if (selectedChatId) {
+      setAnalyzeErrorByChatId((prev) => {
+        const next = { ...prev };
+        delete next[selectedChatId];
+        return next;
+      });
+    }
+    try {
+      const previousSuggestions = suggestions.map((s) => ({ ...s }));
+      const res = await fetch("/api/todo-list/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          todos: suggestions.map((s) => ({
+            title: s.title,
+            ...suggestionToDueApiFields(s),
+            priority: typeof s.priority === "number" ? s.priority : 3,
+            notes: s.notes ?? undefined,
+            category: s.category ?? undefined,
+            estimated_time_minutes: s.estimated_time_minutes ?? undefined,
+            list_id: listIdFilter ?? undefined,
+            source_chat_id: selectedChatId ?? undefined,
+            source_chat_name: selectedChatName ?? undefined,
+            source_account_id: accountId ?? undefined,
+          })),
+          skipDuplicates: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Übernehmen fehlgeschlagen");
+      setAcceptAllResult({ inserted: data.inserted ?? 0, skipped: data.skipped ?? 0 });
+      mutateTodos();
+      mutateCount();
+      if (selectedChatId) {
+        const todosPayload = Array.isArray(data.todos)
+          ? (data.todos as { id?: string }[])
+              .map((t) => t.id)
+              .filter((id): id is string => typeof id === "string" && id.length > 0)
+          : [];
+        pushTodoAcceptBatchUndo({
+          chatId: selectedChatId,
+          previousSuggestions,
+          todoIds: todosPayload,
+        });
+        setSuggestionsByChat((prev) => {
+          schedulePersistRef.current(selectedChatId, []);
+          return { ...prev, [selectedChatId]: [] };
+        });
+        setEditingSuggestion(null);
+      }
+    } catch (e) {
+      if (selectedChatId) {
+        setAnalyzeErrorByChatId((prev) => ({
+          ...prev,
+          [selectedChatId]: e instanceof Error ? e.message : "Übernehmen fehlgeschlagen",
+        }));
+      }
+    }
+  }, [suggestions, selectedChatId, selectedChatName, accountId, listIdFilter, mutateTodos, mutateCount]);
+
+  const toggleComplete = useCallback(
+    async (todo: TodoItem) => {
+      const prevCompleted = todo.completed;
+      const nextCompleted = prevCompleted ? 0 : 1;
+      const res = await fetch(`/api/todo-list/todos/${todo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completed: nextCompleted }),
+      });
+      if (res.ok) {
+        if (prevCompleted === 0 && nextCompleted === 1) {
+          pushTodoCompletionUndo({ id: todo.id, previousCompleted: 0 });
+        }
+        mutateTodos();
+      }
+    },
+    [mutateTodos]
+  );
+
+  const updateTodo = useCallback(
+    async (id: string, patch: Partial<TodoItem>) => {
+      await fetch(`/api/todo-list/todos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      mutateTodos();
+      setEditingTodoId(null);
+      setEditingNotesId(null);
+    },
+    [mutateTodos]
+  );
+
+  const reorderTodos = useCallback(
+    async (orderedIds: string[]) => {
+      const res = await fetch("/api/todo-list/todos/reorder", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+      });
+      if (!res.ok) throw new Error("Reihenfolge konnte nicht gespeichert werden");
+      mutateTodos();
+    },
+    [mutateTodos]
+  );
+
+  const handleTodoDragStart = useCallback((e: React.DragEvent, todoId: string) => {
+    setDraggedTodoId(todoId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", todoId);
+    e.dataTransfer.setData("application/json", JSON.stringify({ todoId }));
+  }, []);
+
+  const handleTodoDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropIndex(index);
+  }, []);
+
+  const handleTodoDragLeave = useCallback((e: React.DragEvent) => {
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      setDropIndex(null);
+    }
+  }, []);
+
+  const handleTodoDrop = useCallback(
+    async (e: React.DragEvent, dropIndex: number) => {
+      e.preventDefault();
+      setDropIndex(null);
+      const id = draggedTodoId ?? e.dataTransfer.getData("text/plain");
+      setDraggedTodoId(null);
+      if (!id || !todos.length) return;
+      const ids = todos.map((t) => t.id);
+      const fromIdx = ids.indexOf(id);
+      if (fromIdx === -1) return;
+      const [movedId] = ids.splice(fromIdx, 1);
+      let toIdx = dropIndex;
+      if (fromIdx < toIdx) toIdx -= 1;
+      ids.splice(toIdx, 0, movedId);
+      await reorderTodos(ids);
+    },
+    [draggedTodoId, todos, reorderTodos]
+  );
+
+  const handleTodoDragEnd = useCallback(() => {
+    setDraggedTodoId(null);
+    setDropIndex(null);
+  }, []);
+
+  const refreshTodoCache = useCallback(async () => {
+    setRefreshingTodos(true);
+    try {
+      await Promise.all([mutateTodos(), mutateCount(), mutateLists()]);
+    } finally {
+      setRefreshingTodos(false);
+    }
+  }, [mutateTodos, mutateCount, mutateLists]);
+
+  /** Send current todo list to ChatGPT for urgency-based sort (title/notes first, deadline second), then apply new order. */
+  const runSmartSort = useCallback(async () => {
+    if (todos.length === 0) return;
+    setSmartSortError(null);
+    setSmartSortLoading(true);
+    try {
+      const res = await fetch("/api/todo-list/todos/smart-sort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          todos: todos.map((t) => ({ id: t.id, title: t.title, notes: t.notes, due_date: t.due_date })),
+        }),
+      });
+      const data = (await res.json()) as { orderedIds?: string[]; error?: string };
+      if (!res.ok) {
+        setSmartSortError(data?.error ?? "Smart Sort fehlgeschlagen");
+        return;
+      }
+      const orderedIds = Array.isArray(data.orderedIds) ? data.orderedIds : [];
+      if (orderedIds.length > 0) {
+        const reorderRes = await fetch("/api/todo-list/todos/reorder", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderedIds }),
+        });
+        if (!reorderRes.ok) {
+          setSmartSortError("Reihenfolge konnte nicht gespeichert werden.");
+          return;
+        }
+        setSort("sort_order");
+        setOrder("asc");
+        await mutateTodos();
+      }
+    } catch (e) {
+      setSmartSortError(e instanceof Error ? e.message : "Smart Sort fehlgeschlagen");
+    } finally {
+      setSmartSortLoading(false);
+    }
+  }, [todos, mutateTodos]);
+
+  const deleteTodo = useCallback(
+    async (id: string) => {
+      await fetch(`/api/todo-list/todos/${id}`, { method: "DELETE" });
+      mutateTodos();
+      mutateCount();
+    },
+    [mutateTodos, mutateCount]
+  );
+
+  const connectGoogleTasks = useCallback(() => {
+    window.location.href = "/api/google-tasks/connect";
+  }, []);
+
+  const connectReclaim = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "settings");
+    url.searchParams.set("tab", "todo");
+    window.location.href = url.toString();
+  }, []);
+
+  const syncTodoToGoogle = useCallback(
+    async (todoId: string) => {
+      setGoogleSyncLoadingByTodoId((prev) => ({ ...prev, [todoId]: true }));
+      setGoogleSyncResultByTodoId((prev) => {
+        const next = { ...prev };
+        delete next[todoId];
+        return next;
+      });
+      try {
+        const res = await fetch(`/api/todo-list/todos/${encodeURIComponent(todoId)}/google-sync`, { method: "POST" });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          alreadySynced?: boolean;
+        };
+        if (!res.ok || !data.ok) throw new Error(data.error ?? "Google Tasks Sync fehlgeschlagen");
+        await mutateTodos();
+        setGoogleSyncResultByTodoId((prev) => ({
+          ...prev,
+          [todoId]: { kind: "ok", message: data.alreadySynced ? "Bereits synchronisiert" : "Synchronisiert" },
+        }));
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Google Tasks Sync fehlgeschlagen";
+        setGoogleSyncResultByTodoId((prev) => ({ ...prev, [todoId]: { kind: "error", message } }));
+        await mutateGoogleTasksStatus();
+      } finally {
+        setGoogleSyncLoadingByTodoId((prev) => ({ ...prev, [todoId]: false }));
+      }
+    },
+    [mutateGoogleTasksStatus, mutateTodos]
+  );
+
+  const syncTodoToReclaim = useCallback(
+    async (todoId: string) => {
+      setReclaimSyncLoadingByTodoId((prev) => ({ ...prev, [todoId]: true }));
+      setReclaimSyncResultByTodoId((prev) => {
+        const next = { ...prev };
+        delete next[todoId];
+        return next;
+      });
+      try {
+        const res = await fetch(`/api/todo-list/todos/${encodeURIComponent(todoId)}/reclaim-sync`, { method: "POST" });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          alreadySynced?: boolean;
+        };
+        if (!res.ok || !data.ok) throw new Error(data.error ?? "Reclaim Sync fehlgeschlagen");
+        await mutateTodos();
+        setReclaimSyncResultByTodoId((prev) => ({
+          ...prev,
+          [todoId]: { kind: "ok", message: data.alreadySynced ? "Bereits synchronisiert" : "Synchronisiert" },
+        }));
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Reclaim Sync fehlgeschlagen";
+        setReclaimSyncResultByTodoId((prev) => ({ ...prev, [todoId]: { kind: "error", message } }));
+        await mutateReclaimStatus();
+      } finally {
+        setReclaimSyncLoadingByTodoId((prev) => ({ ...prev, [todoId]: false }));
+      }
+    },
+    [mutateReclaimStatus, mutateTodos]
+  );
+
+  const archiveTodo = useCallback(
+    async (id: string) => {
+      await fetch(`/api/todo-list/todos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: 1 }),
+      });
+      mutateTodos();
+      mutateCount();
+    },
+    [mutateTodos, mutateCount]
+  );
+
+  const isOverdue = (due: string | null) => due && due < today();
+  const isDueToday = (due: string | null) => due === today();
+
+  return (
+    <>
+      {showBatchPromptSuffixModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="batch-prompt-modal-title"
+          onClick={() => setShowBatchPromptSuffixModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-wa-border bg-wa-panel p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="batch-prompt-modal-title" className="text-sm font-semibold text-wa-text-primary">
+              Zusatz zum Prompt für alle sichtbaren Chats
+            </h2>
+            <p className="mt-1 text-xs text-wa-text-secondary">
+              Wird an den System-Prompt angehängt (optional). Gilt für alle {chatsAvailableForAnalysis.length} nicht ignorierten Chats.
+              Esc schließt ohne Analyse (Entwurf bleibt unverändert).
+            </p>
+            <label htmlFor="batch-prompt-suffix" className="mt-3 block text-xs font-medium text-wa-text-secondary">
+              Prompt-Suffix
+            </label>
+            <textarea
+              id="batch-prompt-suffix"
+              placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
+              value={batchPromptSuffixDraft}
+              onChange={(e) => setBatchPromptSuffixDraft(e.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+            />
+            <div className="mt-4 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBatchPromptSuffixModal(false)}
+                title="Dialog schließen ohne zu analysieren"
+                className="rounded-lg border border-wa-border bg-wa-panel-secondary px-3 py-1.5 text-sm font-medium text-wa-text-primary hover:bg-wa-panel"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAnalyzePromptSuffix(batchPromptSuffixDraft);
+                  setShowBatchPromptSuffixModal(false);
+                  runAnalyzeForAllVisible(batchPromptSuffixDraft);
+                }}
+                title="Zusatz übernehmen und alle sichtbaren Chats analysieren"
+                className="rounded-lg bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+              >
+                Analysieren
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div ref={containerRef} className="flex h-full min-h-0">
+      {/* Column 1: Chats */}
+      <div
+        className="flex shrink-0 flex-col border-r border-wa-border bg-wa-panel"
+        style={{ width: col1Width, minWidth: MIN_COL1 }}
+      >
+        <div className="border-b border-wa-border p-2">
+          <div className="mb-2 flex gap-1">
+            <button
+              type="button"
+              onClick={() => setLeftTab("dashboard")}
+              title="Usage-Statistik und Einstellungen"
+              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                leftTab === "dashboard"
+                  ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
+                  : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeftTab("chats")}
+              title="Chat-Liste und Vorschläge"
+              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                leftTab === "chats"
+                  ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
+                  : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
+              }`}
+            >
+              Chats
+            </button>
+          </div>
+          <label className="text-xs font-medium text-wa-text-secondary">Account</label>
+          {accountsLoading ? (
+            <p className="mt-1 text-sm text-wa-text-secondary">Lade Accounts…</p>
+          ) : accountsError ? (
+            <div className="mt-1 rounded-lg border border-red-400/50 bg-red-500/10 p-2 text-sm text-red-600">
+              <p className="font-medium">Accounts nicht geladen</p>
+              <p className="mt-0.5 text-xs">{accountsError.message}</p>
+              <button
+                type="button"
+                onClick={() => mutateAccounts()}
+                title="Accounts erneut laden"
+                className="mt-2 text-xs font-medium text-red-600 underline hover:no-underline"
+              >
+                Erneut versuchen
+              </button>
+            </div>
+          ) : accounts.length === 0 ? (
+            <p className="mt-1 text-sm text-amber-600">
+              Keine Accounts. Beeper Desktop starten und verbinden.
+            </p>
+          ) : (
+            <select
+              value={accountId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value || null;
+                setSelectedAccountId(id);
+                setTodoListAccountId(id);
+                setSelectedChatId(null);
+              }}
+              title="Beeper-Account auswählen"
+              className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
+            >
+              {accounts.map((acc) => {
+                const id = getAccountId(acc);
+                const label = (acc.user as { name?: string })?.name ?? id?.slice(0, 8) ?? "Account";
+                return (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto p-2">
+          {leftTab === "dashboard" ? (
+            <div className="rounded-lg border border-wa-border bg-wa-panel-secondary/40 p-3">
+              <p className="text-sm font-semibold text-wa-text-primary">Dashboard</p>
+              <p className="mt-1 text-xs text-wa-text-secondary">
+                Links oben kannst du jederzeit zurück zu „Chats“ wechseln.
+              </p>
+            </div>
+          ) : null}
+          {chatsLoading && accountId ? (
+            <p className="text-sm text-wa-text-secondary">Lade Chats…</p>
+          ) : chatsError ? (
+            <div className="rounded-lg border border-red-400/50 bg-red-500/10 p-2 text-sm text-red-600">
+              <p className="font-medium">Chats nicht geladen</p>
+              <p className="mt-0.5 text-xs">{chatsError.message}</p>
+              <button
+                type="button"
+                onClick={() => mutateChats()}
+                title="Chats erneut laden"
+                className="mt-2 text-xs font-medium text-red-600 underline hover:no-underline"
+              >
+                Erneut versuchen
+              </button>
+            </div>
+          ) : !accountId ? (
+            <p className="text-sm text-wa-text-secondary">Account wählen.</p>
+          ) : chats.length === 0 ? (
+            <p className="text-sm text-wa-text-secondary">
+              Keine Chats in diesem Account (oder nur archivierte/Gruppen).
+            </p>
+          ) : null}
+          {leftTab === "chats" && !chatsLoading && !chatsError && chats.length > 0 && (
+            <>
+              <input
+                type="search"
+                placeholder={isWhatsAppAccount ? "Chat suchen (Name, Nummer, ID)" : "Chat suchen (Name, ID)"}
+                value={chatSearchQuery}
+                onChange={(e) => setChatSearchQuery(e.target.value)}
+                className="mb-2 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary"
+                title={
+                  isWhatsAppAccount
+                    ? "Name, Chat-ID oder Telefonnummer (Leerzeichen in Nummern werden ignoriert)"
+                    : "Chat-Liste nach Name oder ID filtern"
+                }
+              />
+              <div className="mb-2">
+                <select
+                  value={chatListView}
+                  onChange={(e) => {
+                    const v = e.target.value as ChatListViewType;
+                    setChatListView(v);
+                    const saved = getChatViewFilter();
+                    setChatViewFilter({ ...saved, chatListView: v });
+                  }}
+                  title="Welche Chats in der Liste anzeigen"
+                  className="w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
+                >
+                  <option value="all">Alle (inkl. archiviert)</option>
+                  <option value="private">Private Chats</option>
+                  <option value="groups">Nur Gruppen</option>
+                  <option value="archived">Nur archivierte</option>
+                </select>
+              </div>
+              {selectedChatIds.length > 1 && (
+                <div className="mb-2 rounded-lg border border-wa-green/50 bg-wa-green/5 px-2 py-1.5">
+                  <p className="text-xs font-medium text-wa-text-primary">
+                    {selectedChatIds.length} Chats ausgewählt <span className="text-wa-text-secondary font-normal">(Esc zum Aufheben)</span>
+                  </p>
+                  <div className="mt-1.5 flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={runAnalyzeForSelection}
+                      disabled={loadingAllSuggestions}
+                      title="Ausgewählte Chats auf Todo-Vorschläge analysieren"
+                      className="flex-1 rounded-lg bg-wa-green px-2 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                    >
+                      {loadingAllSuggestions && loadingAllProgress ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total}…` : "Auswahl analysieren"}
+                    </button>
+                    {loadingAllSuggestions && (
+                      <button
+                        type="button"
+                        onClick={cancelAnalyzeBatch}
+                        title="Analyse abbrechen"
+                        className="shrink-0 rounded-lg border border-red-400/60 bg-red-500/10 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/20"
+                      >
+                        Abbrechen
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (chatsAvailableForAnalysis.length > 1) {
+                      setBatchPromptSuffixDraft(analyzePromptSuffix);
+                      setShowBatchPromptSuffixModal(true);
+                    } else {
+                      runAnalyzeForAllVisible();
+                    }
+                  }}
+                  disabled={loadingAllSuggestions}
+                  title="Alle sichtbaren Chats auf Todo-Vorschläge analysieren"
+                  className="w-full rounded-lg border border-wa-border bg-wa-panel-secondary px-2 py-1.5 text-xs font-medium text-wa-text-primary hover:bg-wa-panel disabled:opacity-50"
+                >
+                  {loadingAllSuggestions && loadingAllProgress
+                    ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats`
+                    : "Vorschläge für alle sichtbaren Chats"}
+                </button>
+                <button
+                  type="button"
+                  onClick={runOnePromptForAllVisible}
+                  disabled={loadingAllSuggestions || !onePromptAllChats.trim()}
+                  title="Alle sichtbaren Chats mit genau einem freien Prompt analysieren (Standard-Prompt wird ignoriert)"
+                  className="mt-1.5 w-full rounded-lg border border-blue-400/40 bg-blue-500/10 px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-500/20 disabled:opacity-50 dark:text-blue-300"
+                >
+                  One-Prompt auf alle sichtbaren Chats
+                </button>
+                {loadingAllSuggestions && loadingAllProgress && (
+                  <>
+                    <p className="mt-1 text-xs text-wa-text-secondary">
+                      {loadingAllProgress.done} von {loadingAllProgress.total} Chats analysiert
+                      {" · "}
+                      {loadingAllProgress.messagesLoaded} Nachrichten in fertigen Chats
+                      {loadingAllStep
+                        ? ` · ${loadingAllStep === TODO_ANALYSIS_STEPS[0]
+                            ? `Lade Nachrichten #${Object.keys(loadingMessagePagesByChatId).length ? Math.max(...Object.values(loadingMessagePagesByChatId)) : 0}`
+                            : loadingAllStep}`
+                        : ""}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={cancelAnalyzeBatch}
+                      title="Analyse abbrechen"
+                      className="mt-1.5 w-full rounded-lg border border-red-400/60 bg-red-500/10 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/20"
+                    >
+                      Abbrechen
+                    </button>
+                  </>
+                )}
+              </div>
+              {loadingAllError && (
+                <p className="mb-2 text-xs text-amber-600">{loadingAllError}</p>
+              )}
+              {chatSearchQuery.trim() && filteredChatsForList.length === 0 && (
+                <p className="text-sm text-wa-text-secondary">Keine Chats passen zur Suche.</p>
+              )}
+            </>
+          )}
+          {!chatsLoading && !chatsError && chats.length > 0 && filteredChatsForList.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedChatIds([]);
+                  setSelectedChatId(ALL_CHATS_SENTINEL);
+                }}
+                className={`mb-2 flex w-full items-center justify-between rounded-lg border px-2 py-2 text-left text-sm transition-colors ${
+                  selectedChatId === ALL_CHATS_SENTINEL
+                    ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
+                    : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
+                }`}
+                title="Alle bereits geladenen Vorschläge anzeigen"
+              >
+                <span className="truncate font-medium">ALLE Vorschläge</span>
+                <span className="ml-1 rounded bg-wa-panel px-1.5 py-0.5 text-xs text-wa-text-secondary">
+                  {Object.values(suggestionsByChat).reduce((acc, list) => acc + list.length, 0)}
+                </span>
+              </button>
+              {filteredChatsForList.map((chat, index) => {
+            const id = chat.id;
+            const name = (chat.name ?? chat.participants?.[0]?.name ?? id?.slice(0, 8) ?? "Chat") as string;
+            const count = countByChat[id] ?? 0;
+            const selected = selectedChatId === id;
+            const inSelection = selectedChatIds.length > 0 && selectedChatIds.includes(id);
+            const suggestionCount = suggestionsByChat[id]?.length ?? 0;
+            const ignoredForAnalysis = ignoredChatIds.includes(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setSuggestionContextMenu(null);
+                  setChatContextMenu({ chatId: id, x: e.clientX, y: e.clientY });
+                }}
+                onClick={(e) => {
+                  if (e.shiftKey) {
+                    const anchor = lastClickedIndexRef.current ?? index;
+                    const low = Math.min(anchor, index);
+                    const high = Math.max(anchor, index);
+                    const ids = filteredChatsForList.slice(low, high + 1).map((c) => c.id).filter(Boolean);
+                    setSelectedChatIds(ids);
+                    setSelectedChatId(id);
+                    lastClickedIndexRef.current = index;
+                  } else if (e.metaKey || e.ctrlKey) {
+                    if (selectedChatIds.includes(id)) {
+                      const next = selectedChatIds.filter((x) => x !== id);
+                      setSelectedChatIds(next);
+                      setSelectedChatId(selectedChatId === id ? (next[0] ?? null) : selectedChatId);
+                    } else {
+                      setSelectedChatIds([...selectedChatIds, id]);
+                      setSelectedChatId(id);
+                    }
+                    lastClickedIndexRef.current = index;
+                  } else {
+                    setSelectedChatIds([id]);
+                    setSelectedChatId(id);
+                    lastClickedIndexRef.current = index;
+                  }
+                  setAnalyzeErrorByChatId((prev) => {
+                    const next = { ...prev };
+                    delete next[id];
+                    return next;
+                  });
+                  setAcceptAllResult(null);
+                }}
+                title={`${name}${suggestionCount > 0 ? ` · ${suggestionCount} Vorschlag/Vorschläge` : ""} · Klick: auswählen, Strg/Kmd: Mehrfachauswahl, Rechtsklick: Kontextmenü`}
+                className={`mb-1 flex w-full items-center justify-between rounded-lg border px-2 py-2 text-left text-sm transition-colors ${
+                  selected
+                    ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
+                    : inSelection
+                      ? "border-wa-green/60 bg-wa-green/5 text-wa-text-primary"
+                      : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
+                }`}
+              >
+                <span className="truncate">
+                  {name}
+                  {ignoredForAnalysis ? (
+                    <span className="ml-1 inline-flex rounded bg-amber-500/15 px-1 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Für Todo-Analyse ignoriert">
+                      ignoriert
+                    </span>
+                  ) : null}
+                </span>
+                <span className="ml-1 flex shrink-0 items-center gap-1">
+                  {suggestionCount > 0 && (
+                    <span className="rounded bg-wa-panel px-1.5 py-0.5 text-xs text-wa-text-secondary" title="Vorschläge geladen">
+                      {suggestionCount}
+                    </span>
+                  )}
+                  {count > 0 && (
+                    <span className="rounded-full bg-wa-green/20 px-1.5 py-0.5 text-xs font-medium text-wa-green">
+                      {count}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+              <p className="mt-2 text-[10px] text-wa-text-secondary" title="Tastatur und Maus">
+                Shift+Klick = Bereich wählen, Strg/Cmd+Klick = einzeln an-/abwählen, Esc = Auswahl aufheben.
+              </p>
+            </>
+          )}
+        </div>
+        {chatContextMenu && (
+          <div
+            className="fixed z-50 min-w-56 rounded-lg border border-wa-border bg-wa-panel p-1 shadow-lg"
+            style={{ left: chatContextMenu.x, top: chatContextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const id = chatContextMenu.chatId;
+                updateIgnoredChatIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+                setChatContextMenu(null);
+              }}
+              className="w-full rounded px-2 py-1.5 text-left text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
+            >
+              {ignoredChatIds.includes(chatContextMenu.chatId) ? "Von Ignorieren entfernen" : "Für Analyse ignorieren"}
+            </button>
+          </div>
+        )}
+        {suggestionContextMenu && (
+          <div
+            className="fixed z-50 min-w-72 rounded-lg border border-wa-border bg-wa-panel p-1 shadow-lg"
+            style={{ left: suggestionContextMenu.x, top: suggestionContextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => ignoreChatForFutureSuggestions(suggestionContextMenu.chatId)}
+              className="w-full rounded px-2 py-1.5 text-left text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
+            >
+              Kontakt für zukünftige Analysen ignorieren und alle Vorschläge dieses Kontakts löschen
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div
+        role="separator"
+        aria-label="Spaltenbreite Chats anpassen"
+        className="shrink-0 cursor-col-resize border-r border-wa-border bg-wa-border/30 hover:bg-wa-green/20 transition-colors"
+        style={{ width: HANDLE_WIDTH }}
+        onMouseDown={handleResizeMouseDown(1)}
+      />
+
+      {/* Column 2: Vorschläge (largest) */}
+      <div
+        className="flex shrink-0 flex-col border-r border-wa-border bg-wa-panel"
+        style={{ width: col2Width, minWidth: MIN_COL2 }}
+      >
+        <div className="shrink-0 border-b border-wa-border p-2">
+          {leftTab === "dashboard" ? (
+            <>
+              <h2 className="text-sm font-semibold text-wa-text-primary">Dashboard</h2>
+              <div className="mt-2 rounded-lg border border-wa-border bg-wa-panel-secondary/40 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-wa-text-primary">OpenAI-Usage</p>
+                  <label className="inline-flex items-center gap-2 text-[11px] text-wa-text-secondary">
+                    Zeitraum
+                    <select
+                      value={usageDays}
+                      onChange={(e) => {
+                        const days = Math.max(1, Math.min(365, parseInt(e.target.value || "30", 10) || 30));
+                        setUsageDays(days);
+                        patchAnalyzePrefs({ usageDays: days });
+                      }}
+                      title="Zeitraum für OpenAI-Usage-Statistik"
+                      className="rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-xs text-wa-text-primary"
+                    >
+                      <option value={7}>7 Tage</option>
+                      <option value={30}>30 Tage</option>
+                      <option value={90}>90 Tage</option>
+                    </select>
+                  </label>
+                </div>
+                {usageSummary ? (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-wa-text-secondary">
+                      <span>
+                        Requests:{" "}
+                        <span className="font-semibold text-wa-text-primary">{usageSummary.totals.request_count}</span>
+                      </span>
+                      <span>
+                        Tokens gesamt:{" "}
+                        <span className="font-semibold text-wa-text-primary">{usageSummary.totals.total_tokens}</span>
+                      </span>
+                      <span>
+                        Prompt:{" "}
+                        <span className="font-semibold text-wa-text-primary">{usageSummary.totals.prompt_tokens}</span>
+                      </span>
+                      <span>
+                        Completion:{" "}
+                        <span className="font-semibold text-wa-text-primary">
+                          {usageSummary.totals.completion_tokens}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto rounded border border-wa-border bg-wa-panel/40">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="sticky top-0 bg-wa-panel">
+                          <tr className="text-wa-text-secondary">
+                            <th className="px-2 py-1">Kategorie</th>
+                            <th className="px-2 py-1">Model</th>
+                            <th className="px-2 py-1">Req</th>
+                            <th className="px-2 py-1">Tokens</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {usageSummary.byCategoryAndModel.map((r) => (
+                            <tr key={`${r.category}:${r.model}`} className="border-t border-wa-border/70">
+                              <td className="px-2 py-1 text-wa-text-primary">{r.category}</td>
+                              <td className="px-2 py-1 text-wa-text-secondary">{r.model}</td>
+                              <td className="px-2 py-1 text-wa-text-secondary">{r.request_count}</td>
+                              <td className="px-2 py-1 text-wa-text-secondary">{r.total_tokens}</td>
+                            </tr>
+                          ))}
+                          {usageSummary.byCategoryAndModel.length === 0 && (
+                            <tr>
+                              <td className="px-2 py-2 text-wa-text-secondary" colSpan={4}>
+                                Noch keine Usage-Daten im Zeitraum.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-[10px] text-wa-text-secondary">
+                      Hinweis: Whisper liefert keine Token-Usage; hier zählen wir Requests (Tokens = 0).
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-wa-text-secondary">Lade Usage…</p>
+                )}
+              </div>
+            </>
+          ) : (
+            <h2 className="text-sm font-semibold text-wa-text-primary">Vorschläge</h2>
+          )}
+          {loadingAllSuggestions && loadingAllProgress && (
+            <p className="mt-1 text-xs font-medium text-wa-text-secondary">
+              Analysiere {loadingAllProgress.done}/{loadingAllProgress.total} Chats
+              {" · "}
+              {loadingAllProgress.messagesLoaded} Nachrichten in fertigen Chats
+            </p>
+          )}
+          {selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && lastAnalyzedMessageCount != null && suggestions && suggestions.length > 0 && (
+            <p className="mt-1 text-xs text-wa-text-secondary">
+              {lastAnalyzedMessageCount} Nachrichten ausgewertet
+            </p>
+          )}
+          {leftTab !== "dashboard" && selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && !loadingAllSuggestions && (
+            <div className="mt-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={runAnalyze}
+                  disabled={isCurrentChatAnalyzing}
+                  title="Diesen Chat auf Todo-Vorschläge analysieren"
+                  className="flex-1 rounded-lg bg-wa-green px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {isCurrentChatAnalyzing ? "Analysiere…" : "Todo-Vorschläge laden"}
+                </button>
+                {isCurrentChatAnalyzing && (
+                  <button
+                    type="button"
+                    onClick={cancelAnalyzeSingle}
+                    title="Analyse abbrechen"
+                    className="shrink-0 rounded-lg border border-red-400/60 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/20"
+                  >
+                    Abbrechen
+                  </button>
+                )}
+              </div>
+              {isCurrentChatAnalyzing && analyzeStep && (
+                <p className="mt-1 text-xs text-wa-text-secondary">
+                  {selectedChatName ?? "Chat"}: Schritt {analyzeStepIndex + 1}/3:{" "}
+                  {analyzeStepIndex === 0
+                    ? (selectedChatId && typeof loadingMessagePagesByChatId[selectedChatId] === "number"
+                        ? `Lade Nachrichten #${loadingMessagePagesByChatId[selectedChatId]}`
+                        : "Lade Nachrichten…")
+                    : analyzeStep}
+                </p>
+              )}
+              {analyzeErrorByChatId[selectedChatId] && (
+                <p className="mt-1 text-xs text-red-400">{analyzeErrorByChatId[selectedChatId]}</p>
+              )}
+            </div>
+          )}
+          {leftTab !== "dashboard" && (
+          <div className="mt-2">
+            <label htmlFor="analyze-prompt-suffix" className="block text-xs font-medium text-wa-text-secondary">
+              Zusatz zum Prompt (wird an den System-Prompt angehängt)
+            </label>
+            <textarea
+              id="analyze-prompt-suffix"
+              placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
+              value={analyzePromptSuffix}
+              onChange={(e) => setAnalyzePromptSuffix(e.target.value)}
+              rows={2}
+              className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+            />
+            <label htmlFor="analyze-one-prompt-all" className="mt-2 block text-xs font-medium text-wa-text-secondary">
+              One-Prompt (nur für "One-Prompt auf alle sichtbaren Chats")
+            </label>
+            <textarea
+              id="analyze-one-prompt-all"
+              placeholder="Freier Prompt für alle Chats. Nur Ergebnisse aus diesem Prompt werden übernommen."
+              value={onePromptAllChats}
+              onChange={(e) => setOnePromptAllChats(e.target.value)}
+              rows={5}
+              className="mt-1 w-full rounded-lg border border-blue-400/30 bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-blue-400 focus:outline-none"
+            />
+            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+              <label className="block text-xs text-wa-text-secondary">
+                Analyse-Modus
+                <select
+                  value={analyzeScanMode}
+                  onChange={(e) => {
+                    const mode = e.target.value as TodoAnalyzeScanMode;
+                    setAnalyzeScanMode(mode);
+                    patchAnalyzePrefs({ scanMode: mode });
+                  }}
+                  title="Nach Alter, Nachrichtenanzahl oder beidem filtern"
+                  className="mt-1 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
+                >
+                  <option value="both">Beides (Alter + Anzahl)</option>
+                  <option value="age">Nur Alter</option>
+                  <option value="count">Nur Anzahl</option>
+                </select>
+              </label>
+              <label className="block text-xs text-wa-text-secondary">
+                Max. Alter
+                <div className="mt-1 flex gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    value={analyzeMaxAgeValue}
+                    onChange={(e) => {
+                      const v = Math.max(1, parseInt(e.target.value || "1", 10) || 1);
+                      setAnalyzeMaxAgeValue(v);
+                      patchAnalyzePrefs({ maxAgeValue: v });
+                    }}
+                    disabled={analyzeScanMode === "count"}
+                    className="w-20 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
+                  />
+                  <select
+                    value={analyzeMaxAgeUnit}
+                    onChange={(e) => {
+                      const unit = e.target.value as TodoAnalyzeMaxAgeUnit;
+                      setAnalyzeMaxAgeUnit(unit);
+                      patchAnalyzePrefs({ maxAgeUnit: unit });
+                    }}
+                    disabled={analyzeScanMode === "count"}
+                    title="Einheit für maximales Nachrichtsalter"
+                    className="flex-1 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
+                  >
+                    <option value="days">Tage</option>
+                    <option value="weeks">Wochen</option>
+                    <option value="months">Monate</option>
+                  </select>
+                </div>
+              </label>
+              <label className="block text-xs text-wa-text-secondary">
+                Letzte X Nachrichten
+                <input
+                  type="number"
+                  min={0}
+                  value={analyzeMaxMessages}
+                  onChange={(e) => {
+                    const n = Math.max(0, parseInt(e.target.value || "0", 10) || 0);
+                    setAnalyzeMaxMessages(n);
+                    patchAnalyzePrefs({ maxMessages: n });
+                  }}
+                  disabled={analyzeScanMode === "age"}
+                  className="mt-1 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
+                />
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
+                <span>Analyse-Tiefe</span>
+                <select
+                  value={analyzeAttachmentMode}
+                  onChange={(e) => {
+                    const mode = e.target.value as TodoAnalyzeAttachmentMode;
+                    setAnalyzeAttachmentMode(mode);
+                    patchAnalyzePrefs({ attachmentMode: mode });
+                  }}
+                  title="Schnell: nur Text; Vollständig: inkl. Bilder/Audio (mehr Kosten)"
+                  className="rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
+                >
+                  <option value="fast">Schnell (ohne Bilder/Audio)</option>
+                  <option value="full">Vollständig (mit Bilder/Audio)</option>
+                </select>
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={analyzeForce}
+                  onChange={(e) => {
+                    const force = e.target.checked;
+                    setAnalyzeForce(force);
+                    patchAnalyzePrefs({ analyzeForce: force });
+                  }}
+                  className="h-4 w-4 rounded border-wa-border bg-wa-input-bg text-wa-green"
+                />
+                Cache ignorieren (Erzwingen)
+              </label>
+            </div>
+            <p className="mt-1 text-[11px] text-wa-text-secondary">
+              Aktuell: {analyzeScanMode === "both" ? `max ${analyzeMaxMessages} Nachrichten und max ${analyzeMaxAgeDays} Tage` : analyzeScanMode === "age" ? `nur Nachrichten aus den letzten ${analyzeMaxAgeDays} Tagen` : `nur die letzten ${analyzeMaxMessages} Nachrichten`}.
+            </p>
+            <p className="mt-1 text-[11px] text-wa-text-secondary">
+              Vorschau: Wird analysiert mit {analyzeAttachmentMode === "fast" ? "Schnell-Modus" : "Vollständig-Modus"}; Auswahl: {selectedAnalyzeChatCount} Chat(s), Sichtbar: {chatsAvailableForAnalysis.length} Chat(s), Force: {analyzeForce ? "ja" : "nein"}.
+            </p>
+          </div>
+          )}
+        </div>
+        <div ref={suggestionsColumnRef} className="flex-1 overflow-y-auto p-2">
+          {loadingAllSuggestions && batchSuggestionsFlat.length > 0 ? (
+            <div>
+              <p className="mb-2 text-xs text-wa-text-secondary">
+                Vorschläge von {batchSuggestionsFlat.length > 0 ? new Set(batchSuggestionsFlat.map((x) => x.chatId)).size : 0} Chats (während der Analyse)
+              </p>
+              <ul className="space-y-2">
+                {batchSuggestionsFlat.map(({ chatId, chatName, suggestion: s, indexInChat }, idx) => {
+                  const isEditing = editingSuggestion?.chatId === chatId && editingSuggestion?.index === indexInChat;
+                  return (
+                    <li
+                      key={`${chatId}-${indexInChat}-${idx}`}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setChatContextMenu(null);
+                        setSuggestionContextMenu({ chatId, x: e.clientX, y: e.clientY });
+                      }}
+                      className="flex items-start justify-between gap-2 rounded-lg border border-wa-border bg-wa-panel-secondary/50 p-3 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!accountId) return;
+                            onOpenChat(chatId, accountId);
+                          }}
+                          className="mb-1 inline-block rounded bg-wa-panel px-1.5 py-0.5 text-left text-xs text-wa-text-secondary hover:text-wa-text-primary"
+                          title={`Chat in neuem Tab öffnen (${chatId})`}
+                        >
+                          Chat: {chatName}
+                        </button>
+                        {isEditing ? (
+                          <TodoSuggestionInlineEditor
+                            key={`ed-${chatId}-${indexInChat}`}
+                            suggestion={s}
+                            initialFocus={
+                              editingSuggestion?.chatId === chatId && editingSuggestion?.index === indexInChat
+                                ? editingSuggestion.focus
+                                : undefined
+                            }
+                            onPersist={(patch) => updateSuggestion(chatId, indexInChat, patch)}
+                            onFinish={() => setEditingSuggestion(null)}
+                          />
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "title" })}
+                              title="Titel bearbeiten (Fokus direkt im Feld, Enter speichert)"
+                              className="mt-1 block text-left font-medium text-wa-text-primary hover:underline"
+                            >
+                              {s.title}
+                            </button>
+                            {s.due ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "due" })}
+                                className="mt-0.5 block text-left text-wa-text-secondary hover:underline"
+                                title={`${s.due} – Kalender öffnen`}
+                              >
+                                Frist: {formatSuggestionDue(s)}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "due" })}
+                                className="mt-0.5 block text-left text-xs text-wa-green hover:underline"
+                                title="Frist setzen"
+                              >
+                                + Frist setzen
+                              </button>
+                            )}
+                            {s.estimated_time_minutes != null && s.estimated_time_minutes > 0 && (
+                              <div className="mt-0.5 text-wa-text-secondary" title="Geschätzte Zeit (KI)">
+                                ⏱ ~{formatEstimatedTime(s.estimated_time_minutes)}
+                              </div>
+                            )}
+                            {s.notes ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
+                                className="mt-1 block max-w-full whitespace-pre-wrap break-words text-left text-wa-text-secondary hover:underline"
+                                title="Details bearbeiten (Shift+Enter = Zeilenumbruch)"
+                              >
+                                📝 {s.notes}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
+                                className="mt-1 block text-left text-xs text-wa-green hover:underline"
+                                title="Beschreibung hinzufügen"
+                              >
+                                + Details / Notizen
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {!isEditing && (
+                        <div className="flex shrink-0 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => rejectSuggestion(chatId, indexInChat)}
+                            title="Vorschlag ablehnen"
+                            className="rounded border border-wa-border bg-transparent px-3 py-1.5 text-sm font-medium text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
+                          >
+                            Ablehnen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => acceptSuggestion(s, false, chatId, chatName, chatId, indexInChat).then((r) => r?.duplicate && alert("Bereits in der Liste"))}
+                            title="Vorschlag in Todo-Liste übernehmen"
+                            className="rounded bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+                          >
+                            Akzeptieren
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : loadingAllSuggestions && loadingAllProgress ? (
+            <p className="text-sm text-wa-text-secondary">
+              Analysiere {loadingAllProgress.done}/{loadingAllProgress.total} Chats
+              {" · "}
+              {loadingAllProgress.messagesLoaded} Nachrichten in fertigen Chats
+              . Vorschläge erscheinen hier, sobald Chats fertig sind.
+            </p>
+          ) : selectedChatId === ALL_CHATS_SENTINEL ? (
+            allSuggestionsFlat.length > 0 ? (
+              <div>
+                <p className="mb-2 text-xs text-wa-text-secondary">
+                  Alle Vorschläge aus {new Set(allSuggestionsFlat.map((x) => x.chatId)).size} Chats
+                </p>
+                <ul className="space-y-2">
+                  {allSuggestionsFlat.map(({ chatId, chatName, suggestion: s, indexInChat }, idx) => {
+                    const isEditing = editingSuggestion?.chatId === chatId && editingSuggestion?.index === indexInChat;
+                    return (
+                      <li
+                        key={`all-${chatId}-${indexInChat}-${idx}`}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setChatContextMenu(null);
+                          setSuggestionContextMenu({ chatId, x: e.clientX, y: e.clientY });
+                        }}
+                        className="flex items-start justify-between gap-2 rounded-lg border border-wa-border bg-wa-panel-secondary/50 p-3 text-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!accountId) return;
+                              onOpenChat(chatId, accountId);
+                            }}
+                            className="mb-1 inline-block rounded bg-wa-panel px-1.5 py-0.5 text-left text-xs text-wa-text-secondary hover:text-wa-text-primary"
+                            title={`Chat in neuem Tab öffnen (${chatId})`}
+                          >
+                            Chat: {chatName}
+                          </button>
+                          {isEditing ? (
+                            <TodoSuggestionInlineEditor
+                              key={`ed-all-${chatId}-${indexInChat}`}
+                              suggestion={s}
+                              initialFocus={
+                                editingSuggestion?.chatId === chatId && editingSuggestion?.index === indexInChat
+                                  ? editingSuggestion.focus
+                                  : undefined
+                              }
+                              onPersist={(patch) => updateSuggestion(chatId, indexInChat, patch)}
+                              onFinish={() => setEditingSuggestion(null)}
+                            />
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "title" })}
+                                title="Titel bearbeiten"
+                                className="mt-1 block text-left font-medium text-wa-text-primary hover:underline"
+                              >
+                                {s.title}
+                              </button>
+                              {s.due ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "due" })}
+                                  className="mt-0.5 block text-left text-wa-text-secondary hover:underline"
+                                  title={`${s.due} – Kalender öffnen`}
+                                >
+                                  Frist: {formatSuggestionDue(s)}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "due" })}
+                                  className="mt-0.5 block text-left text-xs text-wa-green hover:underline"
+                                >
+                                  + Frist setzen
+                                </button>
+                              )}
+                              {s.estimated_time_minutes != null && s.estimated_time_minutes > 0 && (
+                                <div className="mt-0.5 text-wa-text-secondary" title="Geschätzte Zeit (KI)">
+                                  ⏱ ~{formatEstimatedTime(s.estimated_time_minutes)}
+                                </div>
+                              )}
+                              {s.notes ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
+                                  className="mt-1 block max-w-full whitespace-pre-wrap break-words text-left text-wa-text-secondary hover:underline"
+                                  title="Details bearbeiten"
+                                >
+                                  📝 {s.notes}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
+                                  className="mt-1 block text-left text-xs text-wa-green hover:underline"
+                                >
+                                  + Details / Notizen
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        {!isEditing && (
+                          <div className="flex shrink-0 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => rejectSuggestion(chatId, indexInChat)}
+                              title="Vorschlag ablehnen"
+                              className="rounded border border-wa-border bg-transparent px-3 py-1.5 text-sm font-medium text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
+                            >
+                              Ablehnen
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => acceptSuggestion(s, false, chatId, chatName, chatId, indexInChat).then((r) => r?.duplicate && alert("Bereits in der Liste"))}
+                              title="Vorschlag in Todo-Liste übernehmen"
+                              className="rounded bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+                            >
+                              Akzeptieren
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-sm text-wa-text-secondary">Keine Vorschläge in allen Chats vorhanden.</p>
+            )
+          ) : !selectedChatId && !loadingAllSuggestions ? (
+            <p className="text-sm text-wa-text-secondary">Chat wählen oder „Vorschläge für alle sichtbaren Chats“ starten.</p>
+          ) : suggestions && suggestions.length > 0 ? (
+            <div>
+              {selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && accountId && (
+                <button
+                  type="button"
+                  onClick={() => onOpenChat(selectedChatId, accountId)}
+                  className="mb-2 w-full rounded-lg border border-wa-border bg-wa-panel px-2 py-1.5 text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
+                  title="Diesen Chat in neuem Tab öffnen"
+                >
+                  Chat in neuem Tab öffnen
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={acceptAll}
+                title="Alle Vorschläge dieses Chats in die Todo-Liste übernehmen"
+                className="mb-3 w-full rounded-lg border border-wa-green bg-wa-green/10 px-2 py-1.5 text-sm font-medium text-wa-green"
+              >
+                Alle übernehmen
+              </button>
+              {acceptAllResult && (
+                <p className="mb-2 text-xs text-wa-text-secondary">
+                  Übernommen: {acceptAllResult.inserted}, übersprungen: {acceptAllResult.skipped}
+                </p>
+              )}
+              <ul className="space-y-2">
+                {suggestions.map((s, i) => {
+                  const isEditing = selectedChatId && editingSuggestion?.chatId === selectedChatId && editingSuggestion?.index === i;
+                  return (
+                    <li
+                      key={`${s.title}-${i}`}
+                      onContextMenu={(e) => {
+                        if (!selectedChatId || selectedChatId === ALL_CHATS_SENTINEL) return;
+                        e.preventDefault();
+                        setChatContextMenu(null);
+                        setSuggestionContextMenu({ chatId: selectedChatId, x: e.clientX, y: e.clientY });
+                      }}
+                      className="flex items-start justify-between gap-2 rounded-lg border border-wa-border bg-wa-panel-secondary/50 p-3 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        {isEditing && selectedChatId ? (
+                          <TodoSuggestionInlineEditor
+                            key={`ed-single-${selectedChatId}-${i}`}
+                            suggestion={s}
+                            initialFocus={
+                              editingSuggestion?.chatId === selectedChatId && editingSuggestion?.index === i
+                                ? editingSuggestion.focus
+                                : undefined
+                            }
+                            onPersist={(patch) => updateSuggestion(selectedChatId, i, patch)}
+                            onFinish={() => setEditingSuggestion(null)}
+                          />
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => selectedChatId && setEditingSuggestion({ chatId: selectedChatId, index: i, focus: "title" })}
+                              title="Titel bearbeiten"
+                              className="block text-left font-medium text-wa-text-primary hover:underline"
+                            >
+                              {s.title}
+                            </button>
+                            {s.due ? (
+                              <button
+                                type="button"
+                                onClick={() => selectedChatId && setEditingSuggestion({ chatId: selectedChatId, index: i, focus: "due" })}
+                                className="mt-0.5 block text-left text-wa-text-secondary hover:underline"
+                                title={`${s.due} – Kalender öffnen`}
+                              >
+                                Frist: {formatSuggestionDue(s)}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => selectedChatId && setEditingSuggestion({ chatId: selectedChatId, index: i, focus: "due" })}
+                                className="mt-0.5 block text-left text-xs text-wa-green hover:underline"
+                              >
+                                + Frist setzen
+                              </button>
+                            )}
+                            {s.estimated_time_minutes != null && s.estimated_time_minutes > 0 && (
+                              <div className="mt-0.5 text-wa-text-secondary" title="Geschätzte Zeit (KI)">
+                                ⏱ ~{formatEstimatedTime(s.estimated_time_minutes)}
+                              </div>
+                            )}
+                            {s.notes ? (
+                              <button
+                                type="button"
+                                onClick={() => selectedChatId && setEditingSuggestion({ chatId: selectedChatId, index: i, focus: "notes" })}
+                                className="mt-1 block max-w-full whitespace-pre-wrap break-words text-left text-wa-text-secondary hover:underline"
+                              >
+                                📝 {s.notes}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => selectedChatId && setEditingSuggestion({ chatId: selectedChatId, index: i, focus: "notes" })}
+                                className="mt-1 block text-left text-xs text-wa-green hover:underline"
+                              >
+                                + Details / Notizen
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {!isEditing && (
+                        <div className="flex shrink-0 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => selectedChatId && rejectSuggestion(selectedChatId, i)}
+                            title="Vorschlag ablehnen (aus Liste entfernen)"
+                            className="rounded border border-wa-border bg-transparent px-3 py-1.5 text-sm font-medium text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
+                          >
+                            Ablehnen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => acceptSuggestion(s, false, undefined, undefined, selectedChatId ?? undefined, i).then((r) => r?.duplicate && alert("Bereits in der Liste"))}
+                            title="Vorschlag in Todo-Liste übernehmen"
+                            className="rounded bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+                          >
+                            Akzeptieren
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-sm text-wa-text-secondary">
+              Keine Vorschläge für diesen Chat. Klicke oben auf „Todo-Vorschläge laden“.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div
+        role="separator"
+        aria-label="Spaltenbreite Vorschläge anpassen"
+        className="shrink-0 cursor-col-resize border-r border-wa-border bg-wa-border/30 hover:bg-wa-green/20 transition-colors"
+        style={{ width: HANDLE_WIDTH }}
+        onMouseDown={handleResizeMouseDown(2)}
+      />
+
+      {/* Column 3: Alle Todos */}
+      <div className="flex min-w-0 flex-1 flex-col bg-wa-chat-bg" style={{ minWidth: MIN_COL3 }}>
+        <div className="flex shrink-0 flex-col gap-1.5 border-b border-wa-border bg-wa-panel p-1.5">
+          <div className="flex items-center gap-2">
+            <h2 className="shrink-0 text-sm font-semibold text-wa-text-primary">Alle Todos</h2>
+            <input
+              type="search"
+              placeholder="Suchen…"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="min-w-0 flex-1 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-xs text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+              aria-label="Todo-Liste durchsuchen"
+              title="Todos durchsuchen (Titel, Notizen, Chat-Name)"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            {[
+              { emoji: "📋", label: "Offen", title: "Nur offene Todos (ohne Remind later)", status: "open" as const, due: "any" as const },
+              { emoji: "📅", label: "Heute", title: "Offene mit Frist heute", status: "open" as const, due: "due_today" as const },
+              { emoji: "⚠️", label: "Überfällig", title: "Offene mit überfälliger Frist", status: "open" as const, due: "overdue" as const },
+              { emoji: "📂", label: "Alle", title: "Alle Todos (offen, erledigt, Archiv, Remind later)", status: "all" as const, due: "any" as const },
+            ].map(({ emoji, label, title: btnTitle, status, due }) => {
+              const active = todoStatus === status && dueFilter === due;
+              return (
+                <button
+                  key={`${status}-${due}`}
+                  type="button"
+                  onClick={() => { setTodoStatus(status); setDueFilter(due); }}
+                  title={btnTitle}
+                  className={`rounded px-1.5 py-1 text-base leading-none transition-colors ${
+                    active ? "bg-wa-green text-white" : "bg-wa-panel-secondary text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
+                  }`}
+                >
+                  {emoji}
+                </button>
+              );
+            })}
+            <span className="mx-0.5 h-4 w-px bg-wa-border" aria-hidden />
+            <select
+              value={sourceAccountIdFilter ?? ""}
+              onChange={(e) => setSourceAccountIdFilter(e.target.value || null)}
+              className="max-w-[7rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              title="Nach Account filtern"
+            >
+              <option value="">👤 Alle</option>
+              {accounts.map((acc) => {
+                const id = getAccountId(acc);
+                const label = (acc.user as { name?: string })?.name ?? id?.slice(0, 8) ?? "Account";
+                return <option key={id} value={id}>👤 {label}</option>;
+              })}
+            </select>
+            <select
+              value={sourceChatIdFilter ?? ""}
+              onChange={(e) => setSourceChatIdFilter(e.target.value || null)}
+              className="max-w-[7rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              title="Nach Chat filtern"
+            >
+              <option value="">💬 Alle</option>
+              {chats.map((c) => {
+                const name = (c.name ?? c.participants?.[0]?.name ?? c.id?.slice(0, 8) ?? "Chat") as string;
+                return <option key={c.id} value={c.id}>💬 {name}</option>;
+              })}
+            </select>
+            <select
+              value={todoStatus}
+              onChange={(e) => setTodoStatus(e.target.value as typeof todoStatus)}
+              className="max-w-[6rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              title="Status: Offen, Erledigt, Archiv, Remind later, Alle"
+            >
+              <option value="open">📋 Offen</option>
+              <option value="snoozed">⏰ Remind</option>
+              <option value="completed">✅ Erledigt</option>
+              <option value="archived">📦 Archiv</option>
+              <option value="all">📂 Alle</option>
+            </select>
+            <select
+              value={dueFilter}
+              onChange={(e) => setDueFilter(e.target.value as typeof dueFilter)}
+              className="w-auto min-w-0 rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              title="Frist-Filter"
+            >
+              <option value="any">📅 Alle</option>
+              <option value="due_today">Heute</option>
+              <option value="overdue">Überfällig</option>
+            </select>
+            <select
+              value={listIdFilter ?? ""}
+              onChange={(e) => setListIdFilter(e.target.value || null)}
+              className="max-w-[6rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              title="Nach Liste filtern"
+            >
+              <option value="">📁 Alle</option>
+              {lists.map((l) => (
+                <option key={l.id} value={l.id}>📁 {l.name}</option>
+              ))}
+            </select>
+            <select
+              value={`${sort}-${order}`}
+              onChange={(e) => {
+                const [s, o] = (e.target.value.split("-") as [typeof sort, typeof order]);
+                setSort(s); setOrder(o);
+              }}
+              className="max-w-[7rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              title="Sortierung"
+            >
+              <option value="due-asc">↗️ Frist ↑</option>
+              <option value="due-desc">↘️ Frist ↓</option>
+              <option value="priority-desc">⭐ Priorität</option>
+              <option value="title-asc">🔤 A–Z</option>
+              <option value="created-desc">🕐 Neueste</option>
+              <option value="sort_order-asc">⋮⋮ Manuell</option>
+            </select>
+            <span className="mx-0.5 h-4 w-px bg-wa-border" aria-hidden />
+            <button
+              type="button"
+              onClick={refreshTodoCache}
+              disabled={refreshingTodos}
+              title="Liste neu laden (Cache leeren)"
+              className="rounded px-1.5 py-1 text-base leading-none text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary disabled:opacity-50"
+            >
+              🔄
+            </button>
+            <button
+              type="button"
+              onClick={runSmartSort}
+              disabled={smartSortLoading || todos.length === 0}
+              title="Smart Sort: Liste per KI nach Dringlichkeit sortieren (Titel/Text zuerst, Frist zweitrangig)"
+              className="rounded px-1.5 py-1 text-base leading-none text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary disabled:opacity-50"
+            >
+              ✨
+            </button>
+            {smartSortError && (
+              <span className="text-xs text-red-500" role="alert" title={smartSortError}>
+                ⚠️
+              </span>
+            )}
+            <a
+              href={`/api/todo-list/todos/export?format=csv&status=${todoStatus}&dueFilter=${dueFilter}&sort=${sort}&order=${order}${searchQ ? `&q=${encodeURIComponent(searchQ)}` : ""}${listIdFilter ? `&list_id=${encodeURIComponent(listIdFilter)}` : ""}${sourceAccountIdFilter ? `&source_account_id=${encodeURIComponent(sourceAccountIdFilter)}` : ""}${sourceChatIdFilter ? `&source_chat_id=${encodeURIComponent(sourceChatIdFilter)}` : ""}`}
+              download="todos.csv"
+              title="Als CSV exportieren"
+              className="rounded px-1.5 py-1 text-base leading-none text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
+            >
+              📥
+            </a>
+          </div>
+        </div>
+        <ul ref={todosListScrollRef} className="flex-1 overflow-y-auto p-2">
+          {todos.map((todo, index) => (
+            <li
+              key={todo.id}
+              draggable
+              onDragStart={(e) => handleTodoDragStart(e, todo.id)}
+              onDragOver={(e) => handleTodoDragOver(e, index)}
+              onDragLeave={handleTodoDragLeave}
+              onDrop={(e) => handleTodoDrop(e, index)}
+              onDragEnd={handleTodoDragEnd}
+              className={`mb-2 flex cursor-grab active:cursor-grabbing items-start gap-2 rounded-lg border p-2 transition-opacity ${
+                draggedTodoId === todo.id ? "opacity-50" : ""
+              } ${
+                isOverdue(todo.due_date)
+                  ? "border-red-400/60 bg-red-500/5"
+                  : isDueToday(todo.due_date)
+                    ? "border-amber-400/60 bg-amber-500/5"
+                    : "border-wa-border bg-wa-panel"
+              } ${dropIndex === index ? "ring-2 ring-wa-green ring-inset" : ""}`}
+            >
+              <span className="mr-1 shrink-0 text-wa-text-secondary/60" aria-hidden title="Zum Umsortieren ziehen">
+                ⋮⋮
+              </span>
+              <input
+                type="checkbox"
+                checked={todo.completed === 1}
+                onChange={() => toggleComplete(todo)}
+                title={
+                  todo.completed === 1
+                    ? "Als offen markieren"
+                    : "Als erledigt markieren · Rückgängig: Strg+Z (Windows) oder ⌘Z (Mac)"
+                }
+                className="mt-1 shrink-0 rounded border-wa-border text-wa-green focus:ring-wa-green"
+              />
+              <div className="min-w-0 flex-1">
+                {editingTodoId === todo.id ? (
+                  <input
+                    type="text"
+                    defaultValue={todo.title}
+                    onBlur={(e) => {
+                      if (todoTitleEscapeCancelRef.current) {
+                        todoTitleEscapeCancelRef.current = false;
+                        return;
+                      }
+                      const v = e.target.value.trim();
+                      if (v && v !== todo.title) {
+                        void updateTodo(todo.id, { title: v });
+                      } else {
+                        setEditingTodoId(null);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") return;
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                    title="Enter: speichern · Esc: abbrechen"
+                    className="w-full rounded border border-wa-border bg-wa-input-bg px-2 py-0.5 text-sm text-wa-text-primary"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditingTodoId(todo.id)}
+                      title="Titel bearbeiten (Klick)"
+                      className={`text-left text-sm font-medium text-wa-text-primary ${todo.completed ? "line-through opacity-70" : ""}`}
+                    >
+                      {todo.title}
+                    </button>
+                    <TodoSyncBadge
+                      todoSyncTarget={todoSyncTarget}
+                      externalGoogleTaskId={todo.external_google_task_id}
+                      externalReclaimTaskId={todo.external_reclaim_task_id}
+                    />
+                  </div>
+                )}
+                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-wa-text-secondary">
+                  {(todo.source_chat_id || getTodoChatDisplayName(todo, accountId, chats)) && (
+                    todo.source_chat_id && (todo.source_account_id ?? accountId) ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenChat(todo.source_chat_id!, todo.source_account_id ?? accountId!)}
+                        title="Zum Chat springen (in neuem Tab öffnen)"
+                        className="rounded bg-wa-panel-secondary/80 px-1.5 py-0.5 text-left text-wa-text-secondary hover:bg-wa-panel hover:text-wa-green hover:underline"
+                      >
+                        Chat: {getTodoChatDisplayName(todo, accountId, chats) ?? todo.source_chat_id?.slice(0, 8) ?? "—"}
+                      </button>
+                    ) : (
+                      <span className="rounded bg-wa-panel-secondary/80 px-1.5 py-0.5" title={todo.source_chat_id ?? undefined}>
+                        Chat: {getTodoChatDisplayName(todo, accountId, chats) ?? todo.source_chat_id?.slice(0, 8) ?? "—"}
+                      </span>
+                    )
+                  )}
+                  {editingDueId === todo.id ? (
+                    <DueDatePicker
+                      variant="compact"
+                      defaultOpen
+                      commitOnSelect
+                      value={todoDueToDateTime(todo)}
+                      onChange={(dt) => {
+                        void updateTodo(todo.id, {
+                          due_date: syncDueDateFromDateTime(dt),
+                          due_at: dueDateTimeToMs(dt),
+                          due_time: dt.time,
+                        } as Partial<TodoItem> & { due_time?: string | null });
+                        setEditingDueId(null);
+                      }}
+                      onClose={() => {
+                        if (todoDueEscapeCancelRef.current) {
+                          todoDueEscapeCancelRef.current = false;
+                        }
+                        setEditingDueId(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingDueId(todo.id)}
+                      className="text-left hover:underline"
+                      title={
+                        todo.due_date || todo.due_at
+                          ? `Frist bearbeiten`
+                          : "Frist setzen"
+                      }
+                    >
+                      {todo.due_date || todo.due_at
+                        ? `Frist: ${formatDueDateTimeRelative(todoDueToDateTime(todo))}`
+                        : "Frist setzen"}
+                    </button>
+                  )}
+                  {todo.priority != null && <span>P{todo.priority}</span>}
+                  {(todo.estimated_time_minutes ?? null) != null && (
+                    <span className="rounded bg-wa-panel-secondary/80 px-1.5 py-0.5 text-wa-text-secondary" title="Geschätzte Umsatzzeit (KI)">
+                      ⏱ ~{formatEstimatedTime(todo.estimated_time_minutes!)}
+                    </span>
+                  )}
+                  {(todo.reminder_at ?? null) != null && (
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400" title={`Erinnerung: ${formatReminderAt(todo.reminder_at!)}`}>
+                      🔔 {formatReminderAt(todo.reminder_at!)}
+                    </span>
+                  )}
+                  {(todo.pinned ?? 0) === 1 && (
+                    <button
+                      type="button"
+                      onClick={() => updateTodo(todo.id, { pinned: 0 })}
+                      className="rounded border border-wa-border bg-wa-panel-secondary px-1.5 py-0.5 text-xs text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
+                      title="Als gesehen markieren (Pin entfernen)"
+                    >
+                      Gesehen
+                    </button>
+                  )}
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      e.target.value = "";
+                      if (v === "") return;
+                      if (v === "clear") {
+                        updateTodo(todo.id, { reminder_at: null, snoozed: 0, pinned: 0, archived: 0 });
+                        return;
+                      }
+                      const ms = parseInt(v, 10);
+                      if (Number.isNaN(ms)) return;
+                      // Preserve scroll position so list doesn't jump when todo leaves open list.
+                      const el = todosListScrollRef.current;
+                      if (el) saveScrollTopAfterReminderRef.current = el.scrollTop;
+                      updateTodo(todo.id, { reminder_at: ms, snoozed: 1, pinned: 0, archived: 1 });
+                    }}
+                    className="rounded border border-wa-border bg-wa-panel-secondary px-1.5 py-0.5 text-xs text-wa-text-secondary hover:text-wa-text-primary"
+                    title="Erinnerung setzen"
+                  >
+                    <option value="">Erinnern…</option>
+                    {getReminderPresets().map((p, idx) => (
+                      <option key={`${p.label}-${p.atMs}-${idx}`} value={p.atMs}>
+                        {p.label}
+                      </option>
+                    ))}
+                    <option value="clear">Erinnerung entfernen</option>
+                  </select>
+                  {todo.source_chat_id && (todo.source_account_id ?? accountId) && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenChat(todo.source_chat_id!, todo.source_account_id ?? accountId!)}
+                      title="Quell-Chat in neuem Tab öffnen"
+                      className="text-wa-green hover:underline"
+                    >
+                      Chat öffnen
+                    </button>
+                  )}
+                  {todo.notes && (
+                    <div className="mt-0.5 max-w-full whitespace-pre-wrap break-words text-wa-text-secondary">
+                      📝 {todo.notes}
+                    </div>
+                  )}
+                </div>
+                {editingNotesId === todo.id && (
+                  <textarea
+                    value={editingNotesDraft}
+                    onChange={(e) => setEditingNotesDraft(e.target.value)}
+                    onBlur={(e) => {
+                      if (todoNotesEscapeCancelRef.current) {
+                        todoNotesEscapeCancelRef.current = false;
+                        return;
+                      }
+                      const v = e.target.value.trim() || null;
+                      if (v !== (todo.notes ?? null)) {
+                        void updateTodo(todo.id, { notes: v });
+                      } else {
+                        setEditingNotesId(null);
+                      }
+                    }}
+                    onKeyDown={(e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+                      if (e.key === "Escape") return;
+                      if (e.key !== "Enter") return;
+                      if (e.shiftKey) {
+                        e.preventDefault();
+                        const el = e.currentTarget;
+                        const start = el.selectionStart ?? 0;
+                        const end = el.selectionEnd ?? 0;
+                        setEditingNotesDraft((prev) => prev.slice(0, start) + "\n" + prev.slice(end));
+                        queueMicrotask(() => {
+                          const pos = start + 1;
+                          try {
+                            el.setSelectionRange(pos, pos);
+                          } catch {
+                            /* ignore */
+                          }
+                        });
+                        return;
+                      }
+                      e.preventDefault();
+                      const v = e.currentTarget.value.trim() || null;
+                      if (v !== (todo.notes ?? null)) {
+                        void updateTodo(todo.id, { notes: v });
+                      } else {
+                        setEditingNotesId(null);
+                      }
+                    }}
+                    rows={3}
+                    title="Enter: speichern und schließen · Shift+Enter: Zeilenumbruch · Esc: abbrechen"
+                    aria-label="Notizen bearbeiten, Enter speichern, Shift-Enter neue Zeile, Esc abbrechen"
+                    className="mt-1 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-xs text-wa-text-primary"
+                    placeholder="Notizen"
+                    autoFocus
+                  />
+                )}
+              </div>
+              <div className="flex shrink-0 gap-1">
+                {todoSyncTarget === "google" ? (
+                  googleTasksStatus?.connected ? (
+                    <button
+                      type="button"
+                      onClick={() => syncTodoToGoogle(todo.id)}
+                      disabled={!!googleSyncLoadingByTodoId[todo.id]}
+                      title="Todo als Google Task synchronisieren"
+                      className="rounded p-1 text-wa-text-secondary hover:bg-wa-panel-secondary disabled:opacity-50"
+                    >
+                      {googleSyncLoadingByTodoId[todo.id] ? "…" : "⬆︎G"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={connectGoogleTasks}
+                      title="Google Tasks verbinden"
+                      className="rounded p-1 text-wa-text-secondary hover:bg-wa-panel-secondary"
+                    >
+                      G+
+                    </button>
+                  )
+                ) : reclaimStatus?.connected ? (
+                  <button
+                    type="button"
+                    onClick={() => syncTodoToReclaim(todo.id)}
+                    disabled={!!reclaimSyncLoadingByTodoId[todo.id]}
+                    title="Todo als Reclaim-Task synchronisieren"
+                    className="rounded p-1 text-wa-text-secondary hover:bg-wa-panel-secondary disabled:opacity-50"
+                  >
+                    {reclaimSyncLoadingByTodoId[todo.id] ? "…" : "⬆︎R"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={connectReclaim}
+                    title="Reclaim verbinden (API-Token in Einstellungen)"
+                    className="rounded p-1 text-wa-text-secondary hover:bg-wa-panel-secondary"
+                  >
+                    R+
+                  </button>
+                )}
+                {!editingNotesId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingNotesDraft(todo.notes ?? "");
+                      setEditingNotesId(todo.id);
+                    }}
+                    title="Notizen"
+                    className="rounded p-1 text-wa-text-secondary hover:bg-wa-panel-secondary"
+                  >
+                    📝
+                  </button>
+                )}
+                {todoStatus === "open" && (
+                  <button
+                    type="button"
+                    onClick={() => archiveTodo(todo.id)}
+                    title="Archivieren"
+                    className="rounded p-1 text-wa-text-secondary hover:bg-wa-panel-secondary"
+                  >
+                    Archiv
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => deleteTodo(todo.id)}
+                  title="Löschen"
+                  className="rounded p-1 text-red-400 hover:bg-red-500/10"
+                >
+                  ×
+                </button>
+              </div>
+              {todoSyncTarget === "google" && googleSyncResultByTodoId[todo.id] && (
+                <div
+                  className={`ml-2 text-xs ${
+                    googleSyncResultByTodoId[todo.id].kind === "ok" ? "text-green-600 dark:text-green-400" : "text-red-500"
+                  }`}
+                  title={googleSyncResultByTodoId[todo.id].message}
+                >
+                  {googleSyncResultByTodoId[todo.id].kind === "ok" ? "Google Tasks: OK" : "Google Tasks: Fehler"}
+                </div>
+              )}
+              {todoSyncTarget === "reclaim" && reclaimSyncResultByTodoId[todo.id] && (
+                <div
+                  className={`ml-2 text-xs ${
+                    reclaimSyncResultByTodoId[todo.id].kind === "ok" ? "text-green-600 dark:text-green-400" : "text-red-500"
+                  }`}
+                  title={reclaimSyncResultByTodoId[todo.id].message}
+                >
+                  {reclaimSyncResultByTodoId[todo.id].kind === "ok" ? "Reclaim: OK" : "Reclaim: Fehler"}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+    <OnePromptResultsDialog
+      open={onePromptDialogOpen}
+      results={onePromptResults}
+      loading={onePromptRunLoading}
+      error={onePromptRunError}
+      targetCount={onePromptTargetCount}
+      processedCount={onePromptProcessedCount}
+      acceptingByChatId={onePromptAcceptingByChatId}
+      onClose={() => setOnePromptDialogOpen(false)}
+      onOpenChat={(chatId) => {
+        if (!accountId) return;
+        onOpenChat(chatId, accountId);
+      }}
+      onAcceptOne={acceptOnePromptResult}
+      onAcceptAll={acceptAllOnePromptResults}
+      onIgnoreOne={(chatId) => setOnePromptResults((prev) => prev.filter((x) => x.chatId !== chatId))}
+    />
+    </>
+  );
+}

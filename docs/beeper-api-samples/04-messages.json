@@ -1,0 +1,298 @@
+{
+  "status": 200,
+  "data": {
+    "items": [
+      {
+        "id": "93325",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@petri:beeper.com",
+        "senderName": "Petri",
+        "timestamp": "2026-02-26T18:12:29.624Z",
+        "sortKey": "852885713",
+        "type": "TEXT",
+        "text": "Caveat emptor! Think before you use this and please try not to get fired from your job.",
+        "isSender": false,
+        "linkedMessageID": "93323",
+        "isUnread": true
+      },
+      {
+        "id": "93324",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@cameronaaron:beeper.com",
+        "senderName": "Cameron Aaron",
+        "timestamp": "2026-02-26T18:09:38.328Z",
+        "sortKey": "852885362",
+        "type": "TEXT",
+        "text": "Id rather a Snapchat bridge",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93323",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@eriks100:matrix.org",
+        "senderName": "Erik",
+        "timestamp": "2026-02-26T18:09:15.960Z",
+        "sortKey": "852885346",
+        "type": "TEXT",
+        "text": "This maybe? https://github.com/gekiclaws/mautrix-teams",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93321",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@petri:beeper.com",
+        "senderName": "Petri",
+        "timestamp": "2026-02-26T18:09:06.025Z",
+        "sortKey": "852885296",
+        "type": "TEXT",
+        "text": "Ah yes, the weekly Teams Bridge question",
+        "isSender": false,
+        "reactions": [
+          {
+            "id": "@cameronaaron:beeper.com😂",
+            "participantID": "@cameronaaron:beeper.com",
+            "emoji": true,
+            "reactionKey": "😂"
+          }
+        ],
+        "isUnread": true
+      },
+      {
+        "id": "93320",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@cameronaaron:beeper.com",
+        "senderName": "Cameron Aaron",
+        "timestamp": "2026-02-26T18:08:45.325Z",
+        "sortKey": "852885244",
+        "type": "TEXT",
+        "text": "There is a lot of lore",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93319",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@cameronaaron:beeper.com",
+        "senderName": "Cameron Aaron",
+        "timestamp": "2026-02-26T18:08:40.080Z",
+        "sortKey": "852885238",
+        "type": "TEXT",
+        "text": "I'm pretty sure thats never being made lol",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93318",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@cameronaaron:beeper.com",
+        "senderName": "Cameron Aaron",
+        "timestamp": "2026-02-26T18:08:26.013Z",
+        "sortKey": "852885207",
+        "type": "TEXT",
+        "text": "God no",
+        "isSender": false,
+        "linkedMessageID": "93317",
+        "isUnread": true
+      },
+      {
+        "id": "93317",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@teymuur:beeper.com",
+        "senderName": "teymuur",
+        "timestamp": "2026-02-26T18:07:39.657Z",
+        "sortKey": "852885045",
+        "type": "TEXT",
+        "text": "anyone developing a teams bridge",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93316",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@petri:beeper.com",
+        "senderName": "Petri",
+        "timestamp": "2026-02-26T18:05:09.969Z",
+        "sortKey": "852884706",
+        "type": "TEXT",
+        "text": "Found the issue. Somehow my spaces got moved to \"Low Priority\"",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93315",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@petri:beeper.com",
+        "senderName": "Petri",
+        "timestamp": "2026-02-26T18:00:57.044Z",
+        "sortKey": "852884034",
+        "type": "TEXT",
+        "text": "Huh",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93310",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@maxinux:beeper.com",
+        "senderName": "Max Inux",
+        "timestamp": "2026-02-26T18:00:05.286Z",
+        "sortKey": "852883969",
+        "type": "TEXT",
+        "text": "ive gotten it to join and see messages, but get key errors on send",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "93270",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@petri:beeper.com",
+        "senderName": "Petri",
+        "timestamp": "2026-02-26T17:49:02.417Z",
+        "sortKey": "852882662",
+        "type": "TEXT",
+        "text": "Does anyone know if the Labs option for Matrix Spaces support in the Android app actually works? I have it enabled but I can't join any spaces or see the ones I have joined in Element.",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "91830",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@eriks100:matrix.org",
+        "senderName": "Erik",
+        "timestamp": "2026-02-26T14:04:54.283Z",
+        "sortKey": "852851882",
+        "type": "TEXT",
+        "text": "Is the snapchat bridge bounty still relevant? Are there any people working on a snapchat bridge currently?",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "91824",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@benasrau:beeper.com",
+        "senderName": "@benasrau:beeper.com",
+        "timestamp": "2026-02-26T14:03:03.658Z",
+        "sortKey": "852851648",
+        "text": "benasraudys left the chat",
+        "isSender": false,
+        "isUnread": false
+      },
+      {
+        "id": "91814",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@eriks100:matrix.org",
+        "senderName": "Erik",
+        "timestamp": "2026-02-26T13:56:25.471Z",
+        "sortKey": "852850736",
+        "text": "Erik joined the chat",
+        "isSender": false,
+        "isUnread": false
+      },
+      {
+        "id": "90575",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@dbmcco:beeper.com",
+        "senderName": "dbmcco",
+        "timestamp": "2026-02-26T13:21:34.874Z",
+        "sortKey": "852846385",
+        "text": "dbmcco joined the chat",
+        "isSender": false,
+        "isUnread": false
+      },
+      {
+        "id": "89828",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@joyful-apricot-5991:beeper.com",
+        "senderName": "joyful-apricot-5991",
+        "timestamp": "2026-02-26T11:30:27.819Z",
+        "sortKey": "852832534",
+        "text": "joyful-apricot-5991 joined the chat",
+        "isSender": false,
+        "isUnread": false
+      },
+      {
+        "id": "89748",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@benevides:beeper.com",
+        "senderName": "benevides",
+        "timestamp": "2026-02-26T10:46:27.856Z",
+        "sortKey": "852827763",
+        "type": "TEXT",
+        "text": "and sometimes the MCP gets the wrong info, sends the wrong message to the person",
+        "isSender": false,
+        "reactions": [
+          {
+            "id": "@tomalder:beeper.com👍",
+            "participantID": "@tomalder:beeper.com",
+            "emoji": true,
+            "reactionKey": "👍"
+          }
+        ],
+        "isUnread": true
+      },
+      {
+        "id": "89747",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@benevides:beeper.com",
+        "senderName": "benevides",
+        "timestamp": "2026-02-26T10:46:09.652Z",
+        "sortKey": "852827715",
+        "type": "TEXT",
+        "text": "i've done some of that as well, but its not ideal",
+        "isSender": false,
+        "isUnread": true
+      },
+      {
+        "id": "89746",
+        "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "accountID": "hungryserv",
+        "senderID": "@tomalder:beeper.com",
+        "senderName": "tomalder",
+        "timestamp": "2026-02-26T10:45:49.818Z",
+        "sortKey": "852827644",
+        "type": "IMAGE",
+        "isSender": false,
+        "linkedMessageID": "89683",
+        "attachments": [
+          {
+            "id": "mxc://local.beeper.com/tomalder_DlvkAzJ8ZjvPpvUnm28OckbnApDlOC88kKkUeWx59BBXiQ8zzdSXx7wOtKJlxk0X",
+            "type": "img",
+            "mimeType": "image/png",
+            "fileName": "image.png",
+            "fileSize": 955404,
+            "isGif": false,
+            "isSticker": false,
+            "size": {
+              "width": 1504,
+              "height": 1596
+            },
+            "srcURL": "mxc://local.beeper.com/tomalder_DlvkAzJ8ZjvPpvUnm28OckbnApDlOC88kKkUeWx59BBXiQ8zzdSXx7wOtKJlxk0X"
+          }
+        ],
+        "isUnread": true
+      }
+    ],
+    "hasMore": true
+  }
+}

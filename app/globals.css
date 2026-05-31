@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme tokens (RGB triplets, space-separated) for Tailwind alpha modifiers, e.g. bg-wa-green/10.
+ * Default: light (white) UI. Dark chat-style UI: [data-theme="dark"] on <html>.
+ */
+:root,
+[data-theme="light"] {
+  --wa-green: 15 118 110;
+  --wa-green-dark: 13 96 90;
+  --wa-green-light: 45 212 191;
+  --wa-panel: 255 255 255;
+  --wa-panel-secondary: 243 244 246;
+  --wa-chat-bg: 249 250 251;
+  --wa-bubble-out: 209 250 229;
+  --wa-bubble-in: 229 231 235;
+  --wa-input-bg: 255 255 255;
+  --wa-text-primary: 17 24 39;
+  --wa-text-secondary: 107 114 128;
+  --wa-border: 229 231 235;
+}
+
+[data-theme="dark"] {
+  --wa-green: 0 168 132;
+  --wa-green-dark: 0 143 114;
+  --wa-green-light: 37 211 102;
+  --wa-panel: 17 27 33;
+  --wa-panel-secondary: 32 44 51;
+  --wa-chat-bg: 11 20 26;
+  --wa-bubble-out: 0 92 75;
+  --wa-bubble-in: 32 44 51;
+  --wa-input-bg: 42 57 66;
+  --wa-text-primary: 233 237 237;
+  --wa-text-secondary: 134 150 160;
+  --wa-border: 42 57 66;
+}
+
+body {
+  @apply bg-wa-chat-bg text-wa-text-primary antialiased;
+}
+
+/* Scrollbars */
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgb(var(--wa-text-secondary) / 0.35);
+  border-radius: 3px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--wa-text-secondary) / 0.5);
+}
+
+/* Hide scrollbar but keep scroll (e.g. touch/wheel) */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

@@ -1,0 +1,36 @@
+{
+  "name": "beeper-crm",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.32.1",
+  "private": true,
+  "scripts": {
+    "dev": "for p in $(lsof -tiTCP:3002 -sTCP:LISTEN 2>/dev/null); do kill -9 \"$p\" 2>/dev/null || true; done; node -e \"console.log('[beeper-crm] Starting dev on http://localhost:3002 (port 3002 cleared if stale; first compile can take a while)')\" && WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=true next dev -p 3002 --hostname localhost --webpack",
+    "dev:turbo": "node -e \"console.log('[beeper-crm] Turbopack dev on http://localhost:3002')\" && WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=true next dev -p 3002 --hostname localhost --turbopack",
+    "dev:network": "node -e \"console.log('[beeper-crm] Starting dev on 0.0.0.0:3002')\" && WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=true next dev -p 3002 --hostname 0.0.0.0 --webpack",
+    "build": "next build --webpack",
+    "start": "next start -p 3001 -H 0.0.0.0",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "next": "^16.1.6",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "swr": "^2.2.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.7"
+  }
+}

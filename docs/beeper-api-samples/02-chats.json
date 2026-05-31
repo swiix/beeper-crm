@@ -1,0 +1,373 @@
+{
+  "status": 200,
+  "data": {
+    "items": [
+      {
+        "id": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+        "localChatID": "17113",
+        "accountID": "hungryserv",
+        "title": "Beeper Developer Community",
+        "type": "group",
+        "participants": {
+          "items": [
+            {
+              "id": "@batuhan:beeper.com",
+              "username": "batuhan:beeper.com",
+              "fullName": "batuhan",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/batuhan_JvKsj8Iy9YQXAfbHhDh4hNRS5ZIScBbYDp1Vn2yMfedvU0jQQ1lYFF5niKpE24Gj",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@bouncer:beeper.com",
+              "username": "bouncer:beeper.com",
+              "fullName": "Beeper Bouncer",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/bouncer_HgUNEq1Tk46i5Pl4dzsvZUhLN6Zxv1lcn6F9cYHCP74W1qQPgGsnJCkV20FxPS75",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@tulir:maunium.net",
+              "username": "tulir:maunium.net",
+              "fullName": "tulir",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/maunium.net/jdlSfvudiMSmcRrleeiYjjFO",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@monolith-nex:beeper.com",
+              "username": "monolith-nex:beeper.com",
+              "fullName": ".",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@greenyoshi:beeper.com",
+              "username": "greenyoshi:beeper.com",
+              "imgURL": "mxc://local.beeper.com/greenyoshi_6y7bV8e0Pn9w067JDXm0mSzUcAMOUoYbTpXU1615b8rQHvIVDSUrfC9itJn96Fjn",
+              "cannotMessage": false,
+              "isSelf": false
+            }
+          ],
+          "hasMore": true,
+          "total": 552
+        },
+        "lastActivity": "2026-02-26T18:12:29.624Z",
+        "unreadCount": 158,
+        "lastReadMessageSortKey": "839857879",
+        "isArchived": false,
+        "isMuted": false,
+        "isPinned": false,
+        "preview": {
+          "id": "93325",
+          "chatID": "!VRvJRVNZDbRuKAsKvK:beeper.com",
+          "accountID": "hungryserv",
+          "senderID": "@petri:beeper.com",
+          "senderName": "@petri:beeper.com",
+          "timestamp": "2026-02-26T18:12:29.624Z",
+          "sortKey": "852885713",
+          "type": "TEXT",
+          "text": "Caveat emptor! Think before you use this and please try not to get fired from your job.",
+          "isSender": false,
+          "linkedMessageID": "93323",
+          "isUnread": true
+        }
+      },
+      {
+        "id": "!updates:beeper.local",
+        "localChatID": "760",
+        "accountID": "hungryserv",
+        "title": "Beeper Updates",
+        "type": "group",
+        "participants": {
+          "items": [
+            {
+              "id": "@help:beeper.com",
+              "username": "help:beeper.com",
+              "fullName": "Beeper Help",
+              "imgURL": "mxc://beeper.com/BSrPoDxZPSRbnOCpcbPoLKAd",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@brad:beeper.com",
+              "username": "brad:beeper.com",
+              "fullName": "Brad Murray",
+              "imgURL": "mxc://beeper.com/c2ef30e46e6f99cd913f2b632573033c60a74524",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@eric:beeper.com",
+              "username": "eric:beeper.com",
+              "fullName": "Eric Migicovsky",
+              "imgURL": "mxc://beeper.com/oSUiltgEXXMZRKykRCDhwihT",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@kishanbagaria:beeper.com",
+              "username": "kishanbagaria:beeper.com",
+              "fullName": "Kishan Bagaria",
+              "imgURL": "mxc://beeper.com/c9f0447b9ce3bfc644d7295fd5748f10a7d4b069",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@fizzadar:beeper.com",
+              "username": "fizzadar:beeper.com",
+              "fullName": "Nick Mills-Barrett",
+              "imgURL": "mxc://beeper.com/18850ea089e0ecc16d7db55527925b43ad63295c",
+              "cannotMessage": false,
+              "isSelf": false
+            }
+          ],
+          "hasMore": true,
+          "total": 6
+        },
+        "lastActivity": "2026-02-13T21:02:11.882Z",
+        "unreadCount": 1,
+        "lastReadMessageSortKey": "585088",
+        "isArchived": false,
+        "isMuted": false,
+        "isPinned": false,
+        "preview": {
+          "id": "10505",
+          "chatID": "!updates:beeper.local",
+          "accountID": "hungryserv",
+          "senderID": "@kishanbagaria:beeper.com",
+          "senderName": "Kishan Bagaria",
+          "timestamp": "2026-02-13T21:02:11.882Z",
+          "sortKey": "703746",
+          "type": "TEXT",
+          "text": "Rolling out some big new updates:\n\n*   Message Requests\n*   X Chat\n*   Telegram Topics Toggle\n*   Beeper Browser Extension\n\nCheck it out: https://blog.beeper.com/2026/02/13/beeper-january/",
+          "isSender": false,
+          "isUnread": true
+        }
+      },
+      {
+        "id": "!HiCVDNDnJjlNCcunXn:beeper.com",
+        "localChatID": "729",
+        "accountID": "hungryserv",
+        "title": "atg",
+        "type": "single",
+        "participants": {
+          "items": [
+            {
+              "id": "@atg:beeper.com",
+              "username": "atg:beeper.com",
+              "fullName": "atg",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@personalcoding:beeper.com",
+              "username": "personalcoding:beeper.com",
+              "fullName": "personalcoding",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_p1K8HaUexkoAuwqJOHrwK6vrfLKTNOhk1PIT8K8ZATev5s35VlJoDtqbEtzlbSy3",
+              "cannotMessage": false,
+              "isSelf": true
+            }
+          ],
+          "hasMore": false,
+          "total": 2
+        },
+        "lastActivity": "2026-01-16T12:23:04.096Z",
+        "unreadCount": 1,
+        "lastReadMessageSortKey": "826282682",
+        "isArchived": false,
+        "isMuted": false,
+        "isPinned": false,
+        "preview": {
+          "id": "10380",
+          "chatID": "!HiCVDNDnJjlNCcunXn:beeper.com",
+          "accountID": "hungryserv",
+          "senderID": "@atg:beeper.com",
+          "senderName": "atg",
+          "timestamp": "2026-01-16T12:23:04.096Z",
+          "sortKey": "839905449",
+          "type": "TEXT",
+          "text": "yoo bro! we dropped it now 🥲  \nWe're both busy running startups and couldn't find the time but it's open source so feel free to take the code and run with it if you'd like! We're happy to support 💯",
+          "isSender": false,
+          "linkedMessageID": "$7Fkgq4VJBuilqRTawY0aCt1qrsHiP-byRKBzy7hn90E",
+          "isUnread": true
+        }
+      },
+      {
+        "id": "!MQTDkghGmTGUVIvxsz:beeper.com",
+        "localChatID": "1471",
+        "accountID": "hungryserv",
+        "title": "Kishan Bagaria",
+        "type": "single",
+        "participants": {
+          "items": [
+            {
+              "id": "@kishanbagaria:beeper.com",
+              "username": "kishanbagaria:beeper.com",
+              "fullName": "Kishan Bagaria",
+              "imgURL": "mxc://beeper.com/c9f0447b9ce3bfc644d7295fd5748f10a7d4b069",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@personalcoding:beeper.com",
+              "username": "personalcoding:beeper.com",
+              "fullName": "personalcoding",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_p1K8HaUexkoAuwqJOHrwK6vrfLKTNOhk1PIT8K8ZATev5s35VlJoDtqbEtzlbSy3",
+              "cannotMessage": false,
+              "isSelf": true
+            }
+          ],
+          "hasMore": false,
+          "total": 2
+        },
+        "lastActivity": "2026-01-16T02:04:12.378Z",
+        "unreadCount": 0,
+        "lastReadMessageSortKey": "839862713",
+        "isArchived": false,
+        "isMuted": false,
+        "isPinned": false,
+        "preview": {
+          "id": "21226",
+          "chatID": "!MQTDkghGmTGUVIvxsz:beeper.com",
+          "accountID": "hungryserv",
+          "senderID": "@personalcoding:beeper.com",
+          "senderName": "personalcoding",
+          "timestamp": "2026-01-16T02:04:12.378Z",
+          "sortKey": "839862713",
+          "type": "REACTION",
+          "isSender": true,
+          "linkedMessageID": "21233"
+        }
+      },
+      {
+        "id": "!ZTvrecDLzvyOCXGmxz:beeper.com",
+        "localChatID": "1088",
+        "accountID": "hungryserv",
+        "title": "rob",
+        "type": "single",
+        "participants": {
+          "items": [
+            {
+              "id": "@robthepirate:beeper.com",
+              "username": "robthepirate:beeper.com",
+              "fullName": "rob",
+              "imgURL": "mxc://local.beeper.com/robthepirate_jKqpMbVOEgsLEfq7u97iPEVbiNPW34mPbPQcuBSGMfOm4XgaDV1Fv6ZyqRqMcYKR",
+              "cannotMessage": false,
+              "isSelf": false
+            },
+            {
+              "id": "@personalcoding:beeper.com",
+              "username": "personalcoding:beeper.com",
+              "fullName": "personalcoding",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_p1K8HaUexkoAuwqJOHrwK6vrfLKTNOhk1PIT8K8ZATev5s35VlJoDtqbEtzlbSy3",
+              "cannotMessage": false,
+              "isSelf": true
+            }
+          ],
+          "hasMore": false,
+          "total": 2
+        },
+        "lastActivity": "2025-09-21T08:12:45.633Z",
+        "unreadCount": 0,
+        "lastReadMessageSortKey": "824974615",
+        "isArchived": true,
+        "isMuted": false,
+        "isPinned": false,
+        "preview": {
+          "id": "16328",
+          "chatID": "!ZTvrecDLzvyOCXGmxz:beeper.com",
+          "accountID": "hungryserv",
+          "senderID": "@personalcoding:beeper.com",
+          "senderName": "personalcoding",
+          "timestamp": "2025-09-21T08:12:45.633Z",
+          "sortKey": "824974615",
+          "type": "TEXT",
+          "text": "what did u build with bepper already?",
+          "isSender": true
+        }
+      },
+      {
+        "id": "!WkoPNStayvSmvIZBKN:beeper.com",
+        "localChatID": "1911",
+        "accountID": "hungryserv",
+        "title": "personalcoding",
+        "type": "single",
+        "participants": {
+          "items": [
+            {
+              "id": "@personalcoding:beeper.com",
+              "username": "personalcoding:beeper.com",
+              "fullName": "personalcoding",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_p1K8HaUexkoAuwqJOHrwK6vrfLKTNOhk1PIT8K8ZATev5s35VlJoDtqbEtzlbSy3",
+              "cannotMessage": false,
+              "isSelf": true
+            }
+          ],
+          "hasMore": false,
+          "total": 1
+        },
+        "lastActivity": "2025-03-26T07:57:00.104Z",
+        "unreadCount": 0,
+        "lastReadMessageSortKey": "800453827",
+        "isArchived": true,
+        "isMuted": false,
+        "isPinned": false,
+        "preview": {
+          "id": "27420",
+          "chatID": "!WkoPNStayvSmvIZBKN:beeper.com",
+          "accountID": "hungryserv",
+          "senderID": "@personalcoding:beeper.com",
+          "senderName": "personalcoding",
+          "timestamp": "2025-03-26T07:57:00.104Z",
+          "sortKey": "800453827",
+          "type": "TEXT",
+          "text": "i want the remind later feature ☹️ when?",
+          "isSender": true
+        }
+      },
+      {
+        "id": "!UJBNJLoWPbXuHaqtYo:beeper.com",
+        "localChatID": "2426",
+        "accountID": "hungryserv",
+        "title": "Note to self",
+        "type": "group",
+        "participants": {
+          "items": [
+            {
+              "id": "@personalcoding:beeper.com",
+              "username": "personalcoding:beeper.com",
+              "fullName": "personalcoding",
+              "imgURL": "file:///Users/personalcoding.de/Library/Application%20Support/BeeperTexts/media/local.beeper.com/personalcoding_p1K8HaUexkoAuwqJOHrwK6vrfLKTNOhk1PIT8K8ZATev5s35VlJoDtqbEtzlbSy3",
+              "cannotMessage": false,
+              "isSelf": true
+            }
+          ],
+          "hasMore": false,
+          "total": 1
+        },
+        "lastActivity": "2024-08-06T21:28:05.619Z",
+        "unreadCount": 0,
+        "lastReadMessageSortKey": "765458315",
+        "isArchived": true,
+        "isMuted": false,
+        "isPinned": false,
+        "preview": {
+          "id": "36600",
+          "chatID": "!UJBNJLoWPbXuHaqtYo:beeper.com",
+          "accountID": "hungryserv",
+          "senderID": "@personalcoding:beeper.com",
+          "senderName": "personalcoding",
+          "timestamp": "2024-08-06T21:28:05.619Z",
+          "sortKey": "765458314",
+          "type": "TEXT",
+          "text": "This is an encrypted chat that only you have access to. You can use it to store notes, images, video and any other files. Everything in this chat is instantly synced to anywhere you are signed in to Beeper.",
+          "isSender": true
+        }
+      }
+    ],
+    "hasMore": false,
+    "oldestCursor": "1722979685619",
+    "newestCursor": "1772129549624"
+  }
+}

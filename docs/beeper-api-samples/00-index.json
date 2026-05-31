@@ -1,0 +1,9 @@
+{
+  "note": "Beeper Desktop API response samples. Keys: status, data.",
+  "endpoints": [
+    "accounts",
+    "chats",
+    "chatDetail",
+    "messages"
+  ]
+}
