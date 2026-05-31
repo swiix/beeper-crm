@@ -18,6 +18,7 @@ import { SWR_CONFIG } from "@/lib/swr-config";
 import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import { dispatchCrmAnalysisUpdated } from "@/lib/crm-analysis-sync";
+import { clampTinderMessagePreloadCount } from "@/lib/chat-message-limits";
 
 function indexOfKeyboardKey(keys: readonly string[], key: string): number {
   return keys.indexOf(key);
@@ -532,7 +533,7 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
       setMessagesCursor(null);
       return;
     }
-    const preloadTarget = Math.max(10, Math.min(300, settings.tinderMessagePreloadCount || 50));
+    const preloadTarget = clampTinderMessagePreloadCount(settings.tinderMessagePreloadCount || 50);
     setMessagesLoadingInitial(true);
     (async () => {
       try {

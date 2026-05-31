@@ -14,10 +14,11 @@ import { getPriorities } from "@/lib/tinder-priority-store";
 import { getAnalysis, getAnalysisCacheRow, saveAnalysis } from "@/lib/analysis-db";
 import { computeAnalysisPromptHash, ANALYSIS_CHAT_MODEL } from "@/lib/analysis-prompt-hash";
 import { getOrRunInflightAnalysis, inflightAnalysisKey } from "@/lib/analysis-inflight";
+import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 
 const log = createLogger("api:analyze");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const ANALYSIS_MESSAGE_LIMIT: number | null = null;
+const ANALYSIS_MESSAGE_LIMIT = MAX_CHAT_MESSAGES;
 const CHUNK_MESSAGE_SIZE = 60;
 const LONG_CHAT_MODE_THRESHOLD = 120;
 const MODEL_MAX_CONTEXT_TOKENS = 128000;

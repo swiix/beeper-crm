@@ -6,9 +6,10 @@
 import { beeperJson } from "@/lib/beeper";
 import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import { runWithConcurrency } from "@/lib/run-with-concurrency";
+import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 import { getTranscript } from "@/lib/transcribe";
 
-const MESSAGE_LIMIT = 50;
+const MESSAGE_LIMIT = MAX_CHAT_MESSAGES;
 
 interface MessageItem {
   text?: string;

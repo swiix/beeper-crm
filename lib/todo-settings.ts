@@ -5,10 +5,11 @@
 import fs from "fs";
 import path from "path";
 import { ensureProjectDataDir } from "@/lib/project-data-dir";
+import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 
 export const DEFAULT_TODO_LIST_MESSAGE_LIMIT = 20;
 export const MIN_TODO_MESSAGE_LIMIT = 0;
-export const MAX_TODO_MESSAGE_LIMIT = 300;
+export const MAX_TODO_MESSAGE_LIMIT = MAX_CHAT_MESSAGES;
 export const DEFAULT_TODO_DEFAULT_DEADLINE_DAYS = 3;
 export const MIN_DEADLINE_DAYS = 1;
 export const MAX_DEADLINE_DAYS = 30;

@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger";
 import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import { readTodoSettings } from "@/lib/todo-settings";
+import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
 import { getTodoSuggestions, setTodoSuggestions } from "@/lib/todo-db";
 import { trackOpenAiUsageEvent } from "@/lib/openai-usage";
@@ -456,13 +457,16 @@ export async function POST(request: NextRequest) {
         : settings.todoListMessageScanMode;
     const bodyMaxMessages =
       typeof body?.maxMessages === "number" && !Number.isNaN(body.maxMessages)
-        ? Math.max(0, Math.round(body.maxMessages))
+        ? Math.min(MAX_CHAT_MESSAGES, Math.max(0, Math.round(body.maxMessages)))
         : null;
     const bodyMaxAgeDays =
       typeof body?.maxMessageAgeDays === "number" && !Number.isNaN(body.maxMessageAgeDays)
         ? Math.max(1, Math.round(body.maxMessageAgeDays))
         : null;
-    const maxMessages = bodyMaxMessages ?? settings.todoListMessageLimit;
+    const maxMessages = Math.min(
+      MAX_CHAT_MESSAGES,
+      Math.max(0, bodyMaxMessages ?? settings.todoListMessageLimit)
+    );
     const maxAgeDays = bodyMaxAgeDays ?? settings.todoListMaxMessageAgeDays;
     const minTimestampMs =
       mode === "age" || mode === "both" ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : null;

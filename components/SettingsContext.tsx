@@ -20,6 +20,7 @@ import {
   setTinderKeyboardLayout as persistTinderKeyboardLayout,
   setTinderMessagePreloadCount as persistTinderMessagePreloadCount,
 } from "@/lib/settings";
+import { clampTinderMessagePreloadCount } from "@/lib/chat-message-limits";
 
 interface SettingsState {
   autoInsertFirstSuggestion: boolean;
@@ -97,7 +98,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     persistTinderMessagePreloadCount(value);
     setSettings((s) => ({
       ...s,
-      tinderMessagePreloadCount: Math.max(10, Math.min(300, Math.round(value))),
+      tinderMessagePreloadCount: clampTinderMessagePreloadCount(value),
     }));
   }, []);
 

@@ -412,7 +412,7 @@ export function SettingsView() {
       setTodoListPrompt(data.todoListPrompt ?? "");
       const limit = data.todoListMessageLimit;
       setTodoListMessageLimit(
-        typeof limit === "number" && limit >= 0 && limit <= 300 ? limit : 20
+        typeof limit === "number" && limit >= 0 && limit <= 50 ? limit : 20
       );
       const days = data.todoListDefaultDeadlineDays;
       setTodoListDefaultDeadlineDays(
@@ -464,7 +464,7 @@ export function SettingsView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           todoListPrompt: todoListPrompt.trim() || undefined,
-          todoListMessageLimit: Math.min(300, Math.max(0, todoListMessageLimit)),
+          todoListMessageLimit: Math.min(50, Math.max(0, todoListMessageLimit)),
           todoListDefaultDeadlineDays: Math.min(30, Math.max(1, todoListDefaultDeadlineDays)),
           todoListDefaultDurationHours: Math.min(24, Math.max(0.05, Number(todoListDefaultDurationHours.toFixed(2)))),
           todoSyncTarget,
@@ -699,14 +699,14 @@ export function SettingsView() {
                 id="tinder-preload-count"
                 type="number"
                 min={10}
-                max={300}
-                step={10}
+                max={50}
+                step={5}
                 value={settings.tinderMessagePreloadCount}
                 onChange={(e) => setTinderMessagePreloadCount(parseInt(e.target.value, 10) || 50)}
                 className="mt-2 w-28 rounded-lg border border-wa-border bg-wa-input-bg px-3 py-2 text-sm text-wa-text-primary focus:border-wa-green focus:outline-none"
               />
               <p className="mt-1.5 text-xs text-wa-text-secondary">
-                Wie viele letzte Nachrichten beim Öffnen eines Chats vorgeladen werden. Standard: 50. Ältere Nachrichten können im Chatverlauf per Paging nachgeladen werden.
+                Wie viele letzte Nachrichten beim Öffnen eines Chats vorgeladen werden (max. 50). Standard: 50. Ältere Nachrichten können im Chatverlauf per Paging nachgeladen werden.
               </p>
             </div>
           </SettingsSection>
@@ -1026,15 +1026,15 @@ export function SettingsView() {
                 />
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-wa-text-secondary">Max. Nachrichten (0–300)</span>
+                    <span className="text-xs text-wa-text-secondary">Max. Nachrichten (0–50)</span>
                     <input
                       type="number"
                       min={0}
-                      max={300}
+                      max={50}
                       value={todoListMessageLimit}
                       onChange={(e) => {
                         const v = parseInt(e.target.value, 10);
-                        if (!Number.isNaN(v)) setTodoListMessageLimit(Math.min(300, Math.max(0, v)));
+                        if (!Number.isNaN(v)) setTodoListMessageLimit(Math.min(50, Math.max(0, v)));
                       }}
                       className="rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
                     />

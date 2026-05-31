@@ -17,6 +17,7 @@ import {
   type TodoAnalyzeMaxAgeUnit,
   type TodoAnalyzeScanMode,
 } from "@/lib/settings";
+import { clampChatMessageCount } from "@/lib/chat-message-limits";
 import {
   pushTodoCompletionUndo,
   pushTodoSuggestionRejectUndo,
@@ -2754,13 +2755,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 </div>
               </label>
               <label className="block text-xs text-wa-text-secondary">
-                Letzte X Nachrichten
+                Letzte X Nachrichten (max. 50)
                 <input
                   type="number"
                   min={0}
+                  max={50}
                   value={analyzeMaxMessages}
                   onChange={(e) => {
-                    const n = Math.max(0, parseInt(e.target.value || "0", 10) || 0);
+                    const n = clampChatMessageCount(parseInt(e.target.value || "0", 10) || 0);
                     setAnalyzeMaxMessages(n);
                     patchAnalyzePrefs({ maxMessages: n });
                   }}

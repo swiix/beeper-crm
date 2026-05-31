@@ -3,6 +3,8 @@
  * Keys are prefixed to avoid collisions.
  */
 
+import { clampTinderMessagePreloadCount, MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
+
 const PREFIX = "beeper-crm:";
 
 export const SETTING_KEYS = {
@@ -92,11 +94,11 @@ export function getTinderMessagePreloadCount(): number {
   const raw = getItem(SETTING_KEYS.tinderMessagePreloadCount);
   const n = raw ? Number(raw) : NaN;
   if (Number.isNaN(n)) return 50;
-  return Math.max(10, Math.min(300, Math.round(n)));
+  return clampTinderMessagePreloadCount(n);
 }
 
 export function setTinderMessagePreloadCount(value: number): void {
-  const n = Math.max(10, Math.min(300, Math.round(value)));
+  const n = clampTinderMessagePreloadCount(value);
   setItem(SETTING_KEYS.tinderMessagePreloadCount, String(n));
 }
 
@@ -132,7 +134,7 @@ const DEFAULT_TODO_ANALYZE_PREFS: SavedTodoAnalyzePrefs = {
   scanMode: "both",
   maxAgeValue: 30,
   maxAgeUnit: "days",
-  maxMessages: 300,
+  maxMessages: MAX_CHAT_MESSAGES,
   attachmentMode: "fast",
   analyzeForce: false,
   usageDays: 30,
@@ -148,7 +150,7 @@ function normalizeTodoAnalyzePrefs(raw: Record<string, unknown>): SavedTodoAnaly
     out.maxAgeUnit = raw.maxAgeUnit;
   }
   if (typeof raw.maxMessages === "number" && !Number.isNaN(raw.maxMessages)) {
-    out.maxMessages = Math.min(500_000, Math.max(0, Math.round(raw.maxMessages)));
+    out.maxMessages = Math.min(MAX_CHAT_MESSAGES, Math.max(0, Math.round(raw.maxMessages)));
   }
   if (raw.attachmentMode === "fast" || raw.attachmentMode === "full") out.attachmentMode = raw.attachmentMode;
   if (typeof raw.analyzeForce === "boolean") out.analyzeForce = raw.analyzeForce;
