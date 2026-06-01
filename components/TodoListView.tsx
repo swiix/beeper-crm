@@ -17,7 +17,6 @@ import {
   type TodoAnalyzeMaxAgeUnit,
   type TodoAnalyzeScanMode,
 } from "@/lib/settings";
-import { clampChatMessageCount } from "@/lib/chat-message-limits";
 import {
   pushTodoCompletionUndo,
   pushTodoSuggestionRejectUndo,
@@ -29,6 +28,11 @@ import {
 import { OnePromptResultsDialog } from "@/components/OnePromptResultsDialog";
 import { DueDatePicker } from "@/components/DueDatePicker";
 import { TodoSyncBadge } from "@/components/todo/TodoSyncBadge";
+import {
+  TodoAnalyzeSettingsForm,
+  buildAnalyzeRequestFields,
+  type TodoAnalyzeSettingsValues,
+} from "@/components/todo/TodoAnalyzeSettingsForm";
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
 import {
   dueDateTimeToMs,
@@ -289,6 +293,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const IGNORED_CHATS_STORAGE_KEY = "beeper-crm:todo-ignored-chats";
 const LEGACY_TODO_SUGGESTIONS_SESSION_KEY = "beeper-crm:todo-suggestions";
 const ALL_CHATS_SENTINEL = "__all__";
+
+type AnalyzeSettingsModalMode = "all" | "selection" | "single" | "one-prompt";
 
 const TODO_SUGGESTIONS_VIEW_STORAGE_KEY = "beeper-crm:todo-suggestions-view";
 const MAX_VIEW_PROMPT_CHARS = 100_000;
@@ -696,7 +702,6 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const [chatListView, setChatListView] = useState<ChatListViewType>("all");
   const [analyzePromptSuffix, setAnalyzePromptSuffix] = useState("");
   const [onePromptAllChats, setOnePromptAllChats] = useState("");
-  const [promptSettingsExpanded, setPromptSettingsExpanded] = useState(false);
   const [onePromptDialogOpen, setOnePromptDialogOpen] = useState(false);
   const [onePromptResults, setOnePromptResults] = useState<OnePromptDialogResult[]>([]);
   const [onePromptRunLoading, setOnePromptRunLoading] = useState(false);
@@ -721,8 +726,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   );
   const [analyzeForce, setAnalyzeForce] = useState(() => getTodoAnalyzePrefs().analyzeForce);
   const [usageDays, setUsageDays] = useState(() => getTodoAnalyzePrefs().usageDays);
-  const [showBatchPromptSuffixModal, setShowBatchPromptSuffixModal] = useState(false);
-  const [batchPromptSuffixDraft, setBatchPromptSuffixDraft] = useState("");
+  const [showAnalyzeSettingsModal, setShowAnalyzeSettingsModal] = useState(false);
+  const [analyzeSettingsModalMode, setAnalyzeSettingsModalMode] = useState<AnalyzeSettingsModalMode>("all");
+  const [analyzeSettingsDraft, setAnalyzeSettingsDraft] = useState<TodoAnalyzeSettingsValues | null>(null);
   const [googleSyncLoadingByTodoId, setGoogleSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
   const [googleSyncResultByTodoId, setGoogleSyncResultByTodoId] = useState<Record<string, { kind: "ok" | "error"; message: string }>>({});
   const [reclaimSyncLoadingByTodoId, setReclaimSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
@@ -752,6 +758,65 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
 
   const patchAnalyzePrefs = useCallback((patch: Partial<SavedTodoAnalyzePrefs>) => {
     setTodoAnalyzePrefs(patch);
+  }, []);
+
+  const getAnalyzeSettings = useCallback(
+    (): TodoAnalyzeSettingsValues => ({
+      promptSuffix: analyzePromptSuffix,
+      onePromptAllChats: onePromptAllChats,
+      scanMode: analyzeScanMode,
+      maxAgeValue: analyzeMaxAgeValue,
+      maxAgeUnit: analyzeMaxAgeUnit,
+      maxMessages: analyzeMaxMessages,
+      attachmentMode: analyzeAttachmentMode,
+      analyzeForce: analyzeForce,
+    }),
+    [
+      analyzePromptSuffix,
+      onePromptAllChats,
+      analyzeScanMode,
+      analyzeMaxAgeValue,
+      analyzeMaxAgeUnit,
+      analyzeMaxMessages,
+      analyzeAttachmentMode,
+      analyzeForce,
+    ]
+  );
+
+  const applyAnalyzeSettings = useCallback(
+    (draft: TodoAnalyzeSettingsValues) => {
+      setAnalyzePromptSuffix(draft.promptSuffix);
+      setOnePromptAllChats(draft.onePromptAllChats);
+      setAnalyzeScanMode(draft.scanMode);
+      setAnalyzeMaxAgeValue(draft.maxAgeValue);
+      setAnalyzeMaxAgeUnit(draft.maxAgeUnit);
+      setAnalyzeMaxMessages(draft.maxMessages);
+      setAnalyzeAttachmentMode(draft.attachmentMode);
+      setAnalyzeForce(draft.analyzeForce);
+      patchAnalyzePrefs({
+        scanMode: draft.scanMode,
+        maxAgeValue: draft.maxAgeValue,
+        maxAgeUnit: draft.maxAgeUnit,
+        maxMessages: draft.maxMessages,
+        attachmentMode: draft.attachmentMode,
+        analyzeForce: draft.analyzeForce,
+      });
+    },
+    [patchAnalyzePrefs]
+  );
+
+  const openAnalyzeSettingsModal = useCallback(
+    (mode: AnalyzeSettingsModalMode) => {
+      setAnalyzeSettingsModalMode(mode);
+      setAnalyzeSettingsDraft(getAnalyzeSettings());
+      setShowAnalyzeSettingsModal(true);
+    },
+    [getAnalyzeSettings]
+  );
+
+  const closeAnalyzeSettingsModal = useCallback(() => {
+    setShowAnalyzeSettingsModal(false);
+    setAnalyzeSettingsDraft(null);
   }, []);
 
   const MIN_COL1 = 160;
@@ -813,10 +878,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         setEditingDueId(null);
         return;
       }
-      if (showBatchPromptSuffixModal) {
+      if (showAnalyzeSettingsModal) {
         e.preventDefault();
-        setBatchPromptSuffixDraft(analyzePromptSuffix);
-        setShowBatchPromptSuffixModal(false);
+        closeAnalyzeSettingsModal();
         return;
       }
       if (onePromptDialogOpen) {
@@ -839,9 +903,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     editingNotesId,
     editingTodoId,
     editingDueId,
-    showBatchPromptSuffixModal,
+    showAnalyzeSettingsModal,
     onePromptDialogOpen,
-    analyzePromptSuffix,
+    closeAnalyzeSettingsModal,
   ]);
 
   useEffect(() => {
@@ -1190,8 +1254,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     () => fetch(`/api/openai-usage/summary?days=${encodeURIComponent(String(usageDays))}`).then((r) => r.json())
   );
 
-  const runAnalyze = useCallback(async () => {
+  const runAnalyze = useCallback(async (settingsOverride?: TodoAnalyzeSettingsValues) => {
     if (!selectedChatId) return;
+    const settings = settingsOverride ?? getAnalyzeSettings();
+    const analyzeFields = buildAnalyzeRequestFields(settings);
     setSuggestionsByChat({});
     const chatId = selectedChatId;
     if (analyzeSingleAbortRef.current) analyzeSingleAbortRef.current.abort();
@@ -1218,12 +1284,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           chatId,
           accountId: accountId ?? undefined,
           contactName: contactName ?? undefined,
-          promptSuffix: analyzePromptSuffix.trim() || undefined,
-          messageScanMode: analyzeScanMode,
-          maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
-          maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
-          attachmentMode: analyzeAttachmentMode,
-          force: analyzeForce,
+          promptSuffix: analyzeFields.promptSuffix,
+          messageScanMode: analyzeFields.messageScanMode,
+          maxMessages: analyzeFields.maxMessages,
+          maxMessageAgeDays: analyzeFields.maxMessageAgeDays,
+          attachmentMode: analyzeFields.attachmentMode,
+          force: analyzeFields.force,
           stream: true,
         }),
         signal,
@@ -1290,7 +1356,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       analyzeSingleAbortRef.current = null;
       setAnalyzingChatIds((prev) => prev.filter((id) => id !== chatId));
     }
-  }, [selectedChatId, accountId, chats, analyzePromptSuffix, analyzeScanMode, analyzeMaxMessages, analyzeMaxAgeDays, analyzeAttachmentMode, analyzeForce]);
+  }, [selectedChatId, accountId, chats, getAnalyzeSettings]);
 
   const cancelAnalyzeSingle = useCallback(() => {
     if (analyzeSingleAbortRef.current) {
@@ -1299,16 +1365,19 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     }
   }, []);
 
-  const runAnalyzeForAllVisible = useCallback(async (suffixOverride?: string, onePromptOverride?: string) => {
+  const runAnalyzeForAllVisible = useCallback(
+    async (settingsOverride?: TodoAnalyzeSettingsValues, onePromptOverride?: string) => {
     if (chatsAvailableForAnalysis.length === 0 || !accountId) return;
+    const settings = settingsOverride ?? getAnalyzeSettings();
+    const analyzeFields = buildAnalyzeRequestFields(settings);
     setSuggestionsByChat({});
     setBatchSuggestionChatOrder([]);
     if (analyzeBatchAbortRef.current) analyzeBatchAbortRef.current.abort();
     const controller = new AbortController();
     analyzeBatchAbortRef.current = controller;
     const signal = controller.signal;
-    const promptSuffix = (suffixOverride ?? analyzePromptSuffix).trim() || undefined;
-    const onePrompt = (onePromptOverride ?? "").trim() || undefined;
+    const onePrompt = (onePromptOverride ?? analyzeFields.onePrompt ?? "").trim() || undefined;
+    const promptSuffix = onePrompt ? undefined : analyzeFields.promptSuffix;
     setLoadingAllSuggestions(true);
     setLoadingAllError(null);
     setLoadingMessagePagesByChatId({});
@@ -1333,13 +1402,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               chatId,
               accountId,
               contactName,
-              promptSuffix: onePrompt ? undefined : promptSuffix,
+              promptSuffix,
               onePrompt,
-              messageScanMode: analyzeScanMode,
-              maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
-              maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
-              attachmentMode: analyzeAttachmentMode,
-              force: analyzeForce,
+              messageScanMode: analyzeFields.messageScanMode,
+              maxMessages: analyzeFields.maxMessages,
+              maxMessageAgeDays: analyzeFields.maxMessageAgeDays,
+              attachmentMode: analyzeFields.attachmentMode,
+              force: analyzeFields.force,
               stream: true,
             }),
             signal,
@@ -1426,10 +1495,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         setLoadingAllError(msg);
       }
     }
-  }, [chatsAvailableForAnalysis, accountId, analyzePromptSuffix, analyzeScanMode, analyzeMaxMessages, analyzeMaxAgeDays, analyzeAttachmentMode, analyzeForce]);
+  },
+    [chatsAvailableForAnalysis, accountId, getAnalyzeSettings]
+  );
 
-  const runOnePromptForAllVisible = useCallback(async () => {
-    const onePrompt = onePromptAllChats.trim();
+  const runOnePromptForAllVisible = useCallback(async (settingsOverride?: TodoAnalyzeSettingsValues) => {
+    const settings = settingsOverride ?? getAnalyzeSettings();
+    const analyzeFields = buildAnalyzeRequestFields(settings);
+    const onePrompt = analyzeFields.onePrompt;
     if (!onePrompt) {
       setLoadingAllError("Bitte zuerst den One-Prompt eintragen.");
       return;
@@ -1456,10 +1529,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           accountId,
           onePrompt,
           targets,
-          messageScanMode: analyzeScanMode,
-          maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
-          maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
-          attachmentMode: analyzeAttachmentMode,
+          messageScanMode: analyzeFields.messageScanMode,
+          maxMessages: analyzeFields.maxMessages,
+          maxMessageAgeDays: analyzeFields.maxMessageAgeDays,
+          attachmentMode: analyzeFields.attachmentMode,
           force: true,
         }),
       });
@@ -1478,15 +1551,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     } finally {
       setOnePromptRunLoading(false);
     }
-  }, [
-    onePromptAllChats,
-    accountId,
-    chatsAvailableForAnalysis,
-    analyzeScanMode,
-    analyzeMaxMessages,
-    analyzeMaxAgeDays,
-    analyzeAttachmentMode,
-  ]);
+  }, [accountId, chatsAvailableForAnalysis, getAnalyzeSettings]);
 
   const acceptOnePromptResult = useCallback(
     async (result: OnePromptDialogResult) => {
@@ -1553,7 +1618,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   }, [onePromptResults, listIdFilter, accountId, mutateTodos, mutateCount]);
 
   /** Analyze only the currently selected chat ids (multi-selection). */
-  const runAnalyzeForSelection = useCallback(async () => {
+  const runAnalyzeForSelection = useCallback(async (settingsOverride?: TodoAnalyzeSettingsValues) => {
+    const settings = settingsOverride ?? getAnalyzeSettings();
+    const analyzeFields = buildAnalyzeRequestFields(settings);
     const baseIds = selectedChatIds.length > 0 ? selectedChatIds : (selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? [selectedChatId] : []);
     const ids = baseIds.filter((id) => !ignoredChatIds.includes(id));
     if (ids.length === 0 || !accountId) return;
@@ -1586,12 +1653,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               chatId,
               accountId,
               contactName,
-              promptSuffix: analyzePromptSuffix.trim() || undefined,
-              messageScanMode: analyzeScanMode,
-              maxMessages: analyzeScanMode === "age" ? undefined : Math.max(0, Math.round(analyzeMaxMessages || 0)),
-              maxMessageAgeDays: analyzeScanMode === "count" ? undefined : analyzeMaxAgeDays,
-              attachmentMode: analyzeAttachmentMode,
-              force: analyzeForce,
+              promptSuffix: analyzeFields.promptSuffix,
+              messageScanMode: analyzeFields.messageScanMode,
+              maxMessages: analyzeFields.maxMessages,
+              maxMessageAgeDays: analyzeFields.maxMessageAgeDays,
+              attachmentMode: analyzeFields.attachmentMode,
+              force: analyzeFields.force,
               stream: true,
             }),
             signal,
@@ -1678,7 +1745,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         setLoadingAllError(msg);
       }
     }
-  }, [selectedChatIds, selectedChatId, accountId, analyzePromptSuffix, chatsAvailableForAnalysis, ignoredChatIds, analyzeScanMode, analyzeMaxMessages, analyzeMaxAgeDays, analyzeAttachmentMode, analyzeForce]);
+  }, [selectedChatIds, selectedChatId, accountId, chatsAvailableForAnalysis, ignoredChatIds, getAnalyzeSettings]);
 
   const cancelAnalyzeBatch = useCallback(() => {
     if (analyzeBatchAbortRef.current) {
@@ -1686,6 +1753,43 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       analyzeBatchAbortRef.current = null;
     }
   }, []);
+
+  const confirmAnalyzeSettingsModal = useCallback(() => {
+    if (!analyzeSettingsDraft) return;
+    const draft = analyzeSettingsDraft;
+    const mode = analyzeSettingsModalMode;
+    applyAnalyzeSettings(draft);
+    closeAnalyzeSettingsModal();
+    if (mode === "all") {
+      void runAnalyzeForAllVisible(draft);
+    } else if (mode === "selection") {
+      void runAnalyzeForSelection(draft);
+    } else if (mode === "single") {
+      void runAnalyze(draft);
+    } else {
+      void runOnePromptForAllVisible(draft);
+    }
+  }, [
+    analyzeSettingsDraft,
+    analyzeSettingsModalMode,
+    applyAnalyzeSettings,
+    closeAnalyzeSettingsModal,
+    runAnalyzeForAllVisible,
+    runAnalyzeForSelection,
+    runAnalyze,
+    runOnePromptForAllVisible,
+  ]);
+
+  const analyzeSettingsModalPreview = useMemo(() => {
+    const visibleChatCount = chatsAvailableForAnalysis.length;
+    let selectedChatCount = selectedAnalyzeChatCount;
+    if (analyzeSettingsModalMode === "all" || analyzeSettingsModalMode === "one-prompt") {
+      selectedChatCount = visibleChatCount;
+    } else if (analyzeSettingsModalMode === "single") {
+      selectedChatCount = 1;
+    }
+    return { selectedChatCount, visibleChatCount };
+  }, [analyzeSettingsModalMode, chatsAvailableForAnalysis.length, selectedAnalyzeChatCount]);
 
   const selectedChat = selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? chats.find((c) => c.id === selectedChatId) : null;
   const selectedChatName = selectedChat
@@ -2116,40 +2220,46 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
 
   return (
     <>
-      {showBatchPromptSuffixModal && (
+      {showAnalyzeSettingsModal && analyzeSettingsDraft && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="batch-prompt-modal-title"
-          onClick={() => setShowBatchPromptSuffixModal(false)}
+          aria-labelledby="analyze-settings-modal-title"
+          onClick={closeAnalyzeSettingsModal}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-wa-border bg-wa-panel p-4 shadow-lg"
+            className="flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col rounded-xl border border-wa-border bg-wa-panel shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="batch-prompt-modal-title" className="text-sm font-semibold text-wa-text-primary">
-              Zusatz zum Prompt für alle sichtbaren Chats
-            </h2>
-            <p className="mt-1 text-xs text-wa-text-secondary">
-              Wird an den System-Prompt angehängt (optional). Gilt für alle {chatsAvailableForAnalysis.length} nicht ignorierten Chats.
-              Esc schließt ohne Analyse (Entwurf bleibt unverändert).
-            </p>
-            <label htmlFor="batch-prompt-suffix" className="mt-3 block text-xs font-medium text-wa-text-secondary">
-              Prompt-Suffix
-            </label>
-            <textarea
-              id="batch-prompt-suffix"
-              placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
-              value={batchPromptSuffixDraft}
-              onChange={(e) => setBatchPromptSuffixDraft(e.target.value)}
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
-            />
-            <div className="mt-4 flex gap-2 justify-end">
+            <div className="shrink-0 border-b border-wa-border p-4">
+              <h2 id="analyze-settings-modal-title" className="text-sm font-semibold text-wa-text-primary">
+                {analyzeSettingsModalMode === "all"
+                  ? "Vorschläge für alle sichtbaren Chats"
+                  : analyzeSettingsModalMode === "selection"
+                    ? "Auswahl analysieren"
+                    : analyzeSettingsModalMode === "single"
+                      ? "Todo-Vorschläge laden"
+                      : "One-Prompt auf alle sichtbaren Chats"}
+              </h2>
+              <p className="mt-1 text-xs text-wa-text-secondary">
+                {analyzeSettingsModalMode === "single"
+                  ? `Einstellungen für ${selectedChatName ?? "diesen Chat"}. Esc schließt ohne Analyse.`
+                  : `Gilt für ${analyzeSettingsModalPreview.selectedChatCount} Chat(s). Esc schließt ohne Analyse (Entwurf wird verworfen).`}
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <TodoAnalyzeSettingsForm
+                idPrefix="analyze-settings-modal"
+                values={analyzeSettingsDraft}
+                onChange={(patch) => setAnalyzeSettingsDraft((prev) => (prev ? { ...prev, ...patch } : prev))}
+                preview={analyzeSettingsModalPreview}
+              />
+            </div>
+            <div className="flex shrink-0 gap-2 border-t border-wa-border p-4 justify-end">
               <button
                 type="button"
-                onClick={() => setShowBatchPromptSuffixModal(false)}
+                onClick={closeAnalyzeSettingsModal}
                 title="Dialog schließen ohne zu analysieren"
                 className="rounded-lg border border-wa-border bg-wa-panel-secondary px-3 py-1.5 text-sm font-medium text-wa-text-primary hover:bg-wa-panel"
               >
@@ -2157,15 +2267,26 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setAnalyzePromptSuffix(batchPromptSuffixDraft);
-                  setShowBatchPromptSuffixModal(false);
-                  runAnalyzeForAllVisible(batchPromptSuffixDraft);
-                }}
-                title="Zusatz übernehmen und alle sichtbaren Chats analysieren"
-                className="rounded-lg bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+                onClick={confirmAnalyzeSettingsModal}
+                disabled={
+                  analyzeSettingsModalMode === "one-prompt" && !analyzeSettingsDraft.onePromptAllChats.trim()
+                }
+                title={
+                  analyzeSettingsModalMode === "one-prompt"
+                    ? "One-Prompt-Analyse für alle sichtbaren Chats starten"
+                    : "Analyse mit diesen Einstellungen starten"
+                }
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${
+                  analyzeSettingsModalMode === "one-prompt" ? "bg-blue-600" : "bg-wa-green"
+                }`}
               >
-                Analysieren
+                {analyzeSettingsModalMode === "all"
+                  ? "Analysieren starten"
+                  : analyzeSettingsModalMode === "selection"
+                    ? "Auswahl analysieren"
+                    : analyzeSettingsModalMode === "single"
+                      ? "Analysieren"
+                      : "One-Prompt starten"}
               </button>
             </div>
           </div>
@@ -2319,7 +2440,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   <div className="mt-1.5 flex gap-1.5">
                     <button
                       type="button"
-                      onClick={runAnalyzeForSelection}
+                      onClick={() => openAnalyzeSettingsModal("selection")}
                       disabled={loadingAllSuggestions}
                       title="Ausgewählte Chats auf Todo-Vorschläge analysieren"
                       className="flex-1 rounded-lg bg-wa-green px-2 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
@@ -2343,14 +2464,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 <button
                   type="button"
                   onClick={() => {
-                    if (chatsAvailableForAnalysis.length > 1) {
-                      setBatchPromptSuffixDraft(analyzePromptSuffix);
-                      setShowBatchPromptSuffixModal(true);
-                    } else {
-                      runAnalyzeForAllVisible();
-                    }
+                    if (chatsAvailableForAnalysis.length > 0) openAnalyzeSettingsModal("all");
                   }}
-                  disabled={loadingAllSuggestions}
+                  disabled={loadingAllSuggestions || chatsAvailableForAnalysis.length === 0}
                   title="Alle sichtbaren Chats auf Todo-Vorschläge analysieren"
                   className="w-full rounded-lg border border-wa-border bg-wa-panel-secondary px-2 py-1.5 text-xs font-medium text-wa-text-primary hover:bg-wa-panel disabled:opacity-50"
                 >
@@ -2360,8 +2476,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 </button>
                 <button
                   type="button"
-                  onClick={runOnePromptForAllVisible}
-                  disabled={loadingAllSuggestions || !onePromptAllChats.trim()}
+                  onClick={() => {
+                    if (chatsAvailableForAnalysis.length > 0) openAnalyzeSettingsModal("one-prompt");
+                  }}
+                  disabled={loadingAllSuggestions || chatsAvailableForAnalysis.length === 0}
                   title="Alle sichtbaren Chats mit genau einem freien Prompt analysieren (Standard-Prompt wird ignoriert)"
                   className="mt-1.5 w-full rounded-lg border border-blue-400/40 bg-blue-500/10 px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-500/20 disabled:opacity-50 dark:text-blue-300"
                 >
@@ -2658,7 +2776,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={runAnalyze}
+                  onClick={() => openAnalyzeSettingsModal("single")}
                   disabled={isCurrentChatAnalyzing}
                   title="Diesen Chat auf Todo-Vorschläge analysieren"
                   className="flex-1 rounded-lg bg-wa-green px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
@@ -2690,161 +2808,6 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 <p className="mt-1 text-xs text-red-400">{analyzeErrorByChatId[selectedChatId]}</p>
               )}
             </div>
-          )}
-          {leftTab !== "dashboard" && (
-          <div className="mt-2">
-            <div className="rounded-lg border border-wa-border/80">
-              <button
-                type="button"
-                onClick={() => setPromptSettingsExpanded((open) => !open)}
-                aria-expanded={promptSettingsExpanded}
-                aria-controls="todo-prompt-settings-panel"
-                title={promptSettingsExpanded ? "Prompt-Felder einklappen" : "Prompt-Felder ausklappen"}
-                className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-wa-text-secondary hover:bg-wa-panel-secondary/50"
-              >
-                <span>Prompt-Einstellungen</span>
-                <span className="flex shrink-0 items-center gap-2">
-                  {!promptSettingsExpanded &&
-                    (analyzePromptSuffix.trim() || onePromptAllChats.trim()) && (
-                      <span className="font-normal text-wa-green">ausgefüllt</span>
-                    )}
-                  <span className="text-[10px] text-wa-text-secondary" aria-hidden>
-                    {promptSettingsExpanded ? "▼" : "▶"}
-                  </span>
-                </span>
-              </button>
-              {promptSettingsExpanded && (
-                <div id="todo-prompt-settings-panel" className="border-t border-wa-border/80 px-2 pb-2 pt-1">
-                  <label htmlFor="analyze-prompt-suffix" className="block text-xs font-medium text-wa-text-secondary">
-                    Zusatz zum Prompt (wird an den System-Prompt angehängt)
-                  </label>
-                  <textarea
-                    id="analyze-prompt-suffix"
-                    placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
-                    value={analyzePromptSuffix}
-                    onChange={(e) => setAnalyzePromptSuffix(e.target.value)}
-                    rows={2}
-                    className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
-                  />
-                  <label htmlFor="analyze-one-prompt-all" className="mt-2 block text-xs font-medium text-wa-text-secondary">
-                    One-Prompt (nur für "One-Prompt auf alle sichtbaren Chats")
-                  </label>
-                  <textarea
-                    id="analyze-one-prompt-all"
-                    placeholder="Freier Prompt für alle Chats. Nur Ergebnisse aus diesem Prompt werden übernommen."
-                    value={onePromptAllChats}
-                    onChange={(e) => setOnePromptAllChats(e.target.value)}
-                    rows={5}
-                    className="mt-1 w-full rounded-lg border border-blue-400/30 bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-blue-400 focus:outline-none"
-                  />
-                </div>
-              )}
-            </div>
-            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
-              <label className="block text-xs text-wa-text-secondary">
-                Analyse-Modus
-                <select
-                  value={analyzeScanMode}
-                  onChange={(e) => {
-                    const mode = e.target.value as TodoAnalyzeScanMode;
-                    setAnalyzeScanMode(mode);
-                    patchAnalyzePrefs({ scanMode: mode });
-                  }}
-                  title="Nach Alter, Nachrichtenanzahl oder beidem filtern"
-                  className="mt-1 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
-                >
-                  <option value="both">Beides (Alter + Anzahl)</option>
-                  <option value="age">Nur Alter</option>
-                  <option value="count">Nur Anzahl</option>
-                </select>
-              </label>
-              <label className="block text-xs text-wa-text-secondary">
-                Max. Alter
-                <div className="mt-1 flex gap-1">
-                  <input
-                    type="number"
-                    min={1}
-                    value={analyzeMaxAgeValue}
-                    onChange={(e) => {
-                      const v = Math.max(1, parseInt(e.target.value || "1", 10) || 1);
-                      setAnalyzeMaxAgeValue(v);
-                      patchAnalyzePrefs({ maxAgeValue: v });
-                    }}
-                    disabled={analyzeScanMode === "count"}
-                    className="w-20 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
-                  />
-                  <select
-                    value={analyzeMaxAgeUnit}
-                    onChange={(e) => {
-                      const unit = e.target.value as TodoAnalyzeMaxAgeUnit;
-                      setAnalyzeMaxAgeUnit(unit);
-                      patchAnalyzePrefs({ maxAgeUnit: unit });
-                    }}
-                    disabled={analyzeScanMode === "count"}
-                    title="Einheit für maximales Nachrichtsalter"
-                    className="flex-1 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
-                  >
-                    <option value="days">Tage</option>
-                    <option value="weeks">Wochen</option>
-                    <option value="months">Monate</option>
-                  </select>
-                </div>
-              </label>
-              <label className="block text-xs text-wa-text-secondary">
-                Letzte X Nachrichten (max. 50)
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={analyzeMaxMessages}
-                  onChange={(e) => {
-                    const n = clampChatMessageCount(parseInt(e.target.value || "0", 10) || 0);
-                    setAnalyzeMaxMessages(n);
-                    patchAnalyzePrefs({ maxMessages: n });
-                  }}
-                  disabled={analyzeScanMode === "age"}
-                  className="mt-1 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
-                />
-              </label>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
-                <span>Analyse-Tiefe</span>
-                <select
-                  value={analyzeAttachmentMode}
-                  onChange={(e) => {
-                    const mode = e.target.value as TodoAnalyzeAttachmentMode;
-                    setAnalyzeAttachmentMode(mode);
-                    patchAnalyzePrefs({ attachmentMode: mode });
-                  }}
-                  title="Schnell: nur Text; Vollständig: inkl. Bilder/Audio (mehr Kosten)"
-                  className="rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
-                >
-                  <option value="fast">Schnell (ohne Bilder/Audio)</option>
-                  <option value="full">Vollständig (mit Bilder/Audio)</option>
-                </select>
-              </label>
-              <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={analyzeForce}
-                  onChange={(e) => {
-                    const force = e.target.checked;
-                    setAnalyzeForce(force);
-                    patchAnalyzePrefs({ analyzeForce: force });
-                  }}
-                  className="h-4 w-4 rounded border-wa-border bg-wa-input-bg text-wa-green"
-                />
-                Cache ignorieren (Erzwingen)
-              </label>
-            </div>
-            <p className="mt-1 text-[11px] text-wa-text-secondary">
-              Aktuell: {analyzeScanMode === "both" ? `max ${analyzeMaxMessages} Nachrichten und max ${analyzeMaxAgeDays} Tage` : analyzeScanMode === "age" ? `nur Nachrichten aus den letzten ${analyzeMaxAgeDays} Tagen` : `nur die letzten ${analyzeMaxMessages} Nachrichten`}.
-            </p>
-            <p className="mt-1 text-[11px] text-wa-text-secondary">
-              Vorschau: Wird analysiert mit {analyzeAttachmentMode === "fast" ? "Schnell-Modus" : "Vollständig-Modus"}; Auswahl: {selectedAnalyzeChatCount} Chat(s), Sichtbar: {chatsAvailableForAnalysis.length} Chat(s), Force: {analyzeForce ? "ja" : "nein"}.
-            </p>
-          </div>
           )}
         </div>
         <div ref={suggestionsColumnRef} className="flex-1 overflow-y-auto p-2">
