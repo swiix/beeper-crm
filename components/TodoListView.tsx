@@ -775,6 +775,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     suggestionCount: number;
     chatCount: number;
   } | null>(null);
+  const [batchZeroResultsHint, setBatchZeroResultsHint] = useState(false);
   const [modalTargetChatIds, setModalTargetChatIds] = useState<string[]>([]);
   const [googleSyncLoadingByTodoId, setGoogleSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
   const [googleSyncResultByTodoId, setGoogleSyncResultByTodoId] = useState<Record<string, { kind: "ok" | "error"; message: string }>>({});
@@ -1586,6 +1587,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     const onePrompt = (onePromptOverride ?? analyzeFields.onePrompt ?? "").trim() || undefined;
     const promptSuffix = onePrompt ? undefined : analyzeFields.promptSuffix;
     setLoadingAllSuggestions(true);
+    setBatchZeroResultsHint(false);
     setLoadingAllError(null);
     setLoadingMessagePagesByChatId({});
     setLoadingAllProgress({ done: 0, total: chatList.length, messagesLoaded: 0 });
@@ -1705,6 +1707,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       }
       if (suggestionCount > 0) {
         setPostAnalyzeBanner({ suggestionCount, chatCount });
+        setBatchZeroResultsHint(false);
+      } else if (ids.length > 0) {
+        setBatchZeroResultsHint(true);
       }
       void globalMutate((key) => typeof key === "string" && key.startsWith("todo-suggestions-meta"));
       if (failedRef.current > 0) {
@@ -1851,6 +1856,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     analyzeBatchAbortRef.current = controller;
     const signal = controller.signal;
     setLoadingAllSuggestions(true);
+    setBatchZeroResultsHint(false);
     setLoadingAllError(null);
     setLoadingMessagePagesByChatId({});
     setLoadingAllProgress({ done: 0, total: ids.length, messagesLoaded: 0 });
@@ -1957,6 +1963,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       setLoadingAllSuggestions(false);
       setLoadingAllProgress(null);
       setLoadingMessagePagesByChatId({});
+      const byChat = suggestionsByChatRef.current;
+      let suggestionCount = 0;
+      for (const list of Object.values(byChat)) suggestionCount += list.length;
+      if (suggestionCount === 0 && ids.length > 0) setBatchZeroResultsHint(true);
       if (failedRef.current > 0) {
         let msg = `${failedRef.current} von ${ids.length} Chats konnten nicht analysiert werden.`;
         if (stoppedEarlyAfterFailuresRef.current) {
@@ -3014,6 +3024,22 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 title="Command Palette (⌘K)"
               >
                 ⌘K
+              </button>
+            </div>
+          )}
+          {batchZeroResultsHint && !loadingAllSuggestions && leftTab !== "dashboard" && (
+            <div className="mb-2 rounded-lg border border-wa-border bg-wa-panel-secondary px-2 py-2 text-xs text-wa-text-secondary">
+              <p>Batch abgeschlossen ohne neue Vorschläge.</p>
+              <p className="mt-1">Preset oder Inbox-Filter anpassen, oder mit Shift+Klick „Alles neu“ analysieren.</p>
+              <button
+                type="button"
+                className="mt-2 text-wa-green hover:underline"
+                onClick={() => {
+                  setBatchZeroResultsHint(false);
+                  openAnalyzeSettingsModal("all", { presetId: "force_refresh", targetChatIds: batchTargetChatIds });
+                }}
+              >
+                Einstellungen öffnen
               </button>
             </div>
           )}

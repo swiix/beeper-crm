@@ -21,6 +21,7 @@ export const SETTING_KEYS = {
   crmFocusMode: PREFIX + "crmFocusMode",
   todoListAccountId: PREFIX + "todoListAccountId",
   todoAnalyzePrefs: PREFIX + "todoAnalyzePrefs",
+  lastTodoAnalyzePreset: PREFIX + "lastTodoAnalyzePreset",
 } as const;
 
 /** Legacy keys (migrated into todoAnalyzePrefs). */

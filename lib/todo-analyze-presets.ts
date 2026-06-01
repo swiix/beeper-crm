@@ -1,5 +1,6 @@
 import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 import type { TodoAnalyzeSettingsValues } from "@/components/todo/TodoAnalyzeSettingsForm";
+import { SETTING_KEYS } from "@/lib/settings";
 import type { BeeperChat } from "@/lib/types";
 
 export type TodoAnalyzePresetId =
@@ -114,7 +115,7 @@ export function suggestPresetForChat(chat: BeeperChat): Exclude<TodoAnalyzePrese
   return "daily_fast";
 }
 
-export const LAST_TODO_ANALYZE_PRESET_KEY = "beeper-crm:lastTodoAnalyzePreset";
+export const LAST_TODO_ANALYZE_PRESET_KEY = SETTING_KEYS.lastTodoAnalyzePreset;
 
 export function getLastTodoAnalyzePreset(): Exclude<TodoAnalyzePresetId, "custom"> | null {
   if (typeof window === "undefined") return null;
