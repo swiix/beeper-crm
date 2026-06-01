@@ -29,11 +29,46 @@ import { OnePromptResultsDialog } from "@/components/OnePromptResultsDialog";
 import { DueDatePicker } from "@/components/DueDatePicker";
 import { TodoSyncBadge } from "@/components/todo/TodoSyncBadge";
 import {
-  TodoAnalyzeSettingsForm,
   buildAnalyzeRequestFields,
   type TodoAnalyzeSettingsValues,
 } from "@/components/todo/TodoAnalyzeSettingsForm";
+import {
+  TodoAnalyzeSettingsDialog,
+  type AnalyzeSettingsModalMode,
+} from "@/components/todo/TodoAnalyzeSettingsDialog";
+import { TodoInboxFilters } from "@/components/todo/TodoInboxFilters";
+import {
+  TodoSuggestionTriage,
+  buildTriageQueue,
+  type TriageQueueItem,
+} from "@/components/todo/TodoSuggestionTriage";
+import { TodoCommandPalette, WORK_MODE_LABELS, type TodoCommandAction } from "@/components/todo/TodoCommandPalette";
 import { buildAppUrl } from "@/lib/app-routes";
+import {
+  applyTodoAnalyzePreset,
+  getLastTodoAnalyzePreset,
+  suggestPresetForChat,
+  type TodoAnalyzePresetId,
+} from "@/lib/todo-analyze-presets";
+import type { TodoBatchScope } from "@/lib/todo-batch-scope";
+import { TODO_BATCH_SCOPE_LABELS } from "@/lib/todo-batch-scope";
+import {
+  chatMatchesInboxFilter,
+  computeTodoChatInboxStatus,
+  getChatLastActivityIso,
+  INBOX_STATUS_DOT_CLASS,
+  INBOX_STATUS_LABELS,
+  type TodoChatInboxStatus,
+  type TodoInboxFilterId,
+} from "@/lib/todo-chat-inbox-status";
+import type { TodoSuggestionMeta } from "@/lib/todo-db";
+import {
+  getTodoInboxFilter,
+  getTodoWorkMode,
+  setTodoInboxFilter,
+  setTodoWorkMode,
+  type TodoWorkMode,
+} from "@/lib/todo-work-mode";
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
 import {
   dueDateTimeToMs,
@@ -295,9 +330,9 @@ const IGNORED_CHATS_STORAGE_KEY = "beeper-crm:todo-ignored-chats";
 const LEGACY_TODO_SUGGESTIONS_SESSION_KEY = "beeper-crm:todo-suggestions";
 const ALL_CHATS_SENTINEL = "__all__";
 
-type AnalyzeSettingsModalMode = "all" | "selection" | "single" | "one-prompt";
-
 const TODO_SUGGESTIONS_VIEW_STORAGE_KEY = "beeper-crm:todo-suggestions-view";
+const LAST_CHAT_STORAGE_KEY = "beeper-crm:todo-last-chat";
+const META_FETCH_CHUNK = 200;
 const MAX_VIEW_PROMPT_CHARS = 100_000;
 
 type TodoSuggestionsViewStored = {
@@ -730,6 +765,17 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const [showAnalyzeSettingsModal, setShowAnalyzeSettingsModal] = useState(false);
   const [analyzeSettingsModalMode, setAnalyzeSettingsModalMode] = useState<AnalyzeSettingsModalMode>("all");
   const [analyzeSettingsDraft, setAnalyzeSettingsDraft] = useState<TodoAnalyzeSettingsValues | null>(null);
+  const [modalInitialPreset, setModalInitialPreset] = useState<TodoAnalyzePresetId | null>(null);
+  const [batchScope, setBatchScope] = useState<TodoBatchScope>("all_visible");
+  const [inboxFilter, setInboxFilterState] = useState<TodoInboxFilterId>(() => getTodoInboxFilter());
+  const [workMode, setWorkModeState] = useState<TodoWorkMode>(() => getTodoWorkMode());
+  const [triageEnabled, setTriageEnabled] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [postAnalyzeBanner, setPostAnalyzeBanner] = useState<{
+    suggestionCount: number;
+    chatCount: number;
+  } | null>(null);
+  const [modalTargetChatIds, setModalTargetChatIds] = useState<string[]>([]);
   const [googleSyncLoadingByTodoId, setGoogleSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
   const [googleSyncResultByTodoId, setGoogleSyncResultByTodoId] = useState<Record<string, { kind: "ok" | "error"; message: string }>>({});
   const [reclaimSyncLoadingByTodoId, setReclaimSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
@@ -807,9 +853,26 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   );
 
   const openAnalyzeSettingsModal = useCallback(
-    (mode: AnalyzeSettingsModalMode) => {
+    (
+      mode: AnalyzeSettingsModalMode,
+      options?: {
+        presetId?: TodoAnalyzePresetId | null;
+        targetChatIds?: string[];
+        chat?: BeeperChat | null;
+      }
+    ) => {
       setAnalyzeSettingsModalMode(mode);
-      setAnalyzeSettingsDraft(getAnalyzeSettings());
+      let draft = getAnalyzeSettings();
+      const preset =
+        options?.presetId ??
+        (mode === "single" && options?.chat
+          ? suggestPresetForChat(options.chat)
+          : getLastTodoAnalyzePreset()) ??
+        "daily_fast";
+      if (preset && preset !== "custom") draft = applyTodoAnalyzePreset(preset, draft);
+      setModalInitialPreset(preset);
+      setAnalyzeSettingsDraft(draft);
+      setModalTargetChatIds(options?.targetChatIds ?? []);
       setShowAnalyzeSettingsModal(true);
     },
     [getAnalyzeSettings]
@@ -912,6 +975,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   useEffect(() => {
     setChatListView(getChatViewFilter().chatListView);
   }, []);
+
+  useEffect(() => {
+    if (selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && typeof window !== "undefined") {
+      sessionStorage.setItem(LAST_CHAT_STORAGE_KEY, selectedChatId);
+    }
+  }, [selectedChatId]);
 
   /** Cmd/Ctrl+Z: restore rejected suggestions, un-accept single/batch (delete created todos + restore list). */
   useEffect(() => {
@@ -1183,6 +1252,138 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     [filteredChatsForList, ignoredChatIds]
   );
 
+  const visibleChatIds = useMemo(
+    () => filteredChatsForList.map((c) => c.id).filter(Boolean) as string[],
+    [filteredChatsForList]
+  );
+
+  const { data: suggestionsMeta = {} } = useSWR<Record<string, TodoSuggestionMeta>>(
+    visibleChatIds.length > 0 ? ["todo-suggestions-meta", visibleChatIds.length, accountId] : null,
+    async () => {
+      const merged: Record<string, TodoSuggestionMeta> = {};
+      for (let i = 0; i < visibleChatIds.length; i += META_FETCH_CHUNK) {
+        const chunk = visibleChatIds.slice(i, i + META_FETCH_CHUNK);
+        const res = await fetch("/api/todo-list/suggestions/meta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chatIds: chunk }),
+        });
+        const data = (await res.json()) as { meta?: Record<string, TodoSuggestionMeta> };
+        Object.assign(merged, data.meta ?? {});
+      }
+      return merged;
+    },
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+  );
+
+  const chatInboxStatusById = useMemo(() => {
+    const out: Record<string, TodoChatInboxStatus> = {};
+    for (const chat of filteredChatsForList) {
+      if (!chat.id) continue;
+      const openCount = suggestionsByChat[chat.id]?.length ?? 0;
+      out[chat.id] = computeTodoChatInboxStatus({
+        chatId: chat.id,
+        ignored: ignoredChatIds.includes(chat.id),
+        openSuggestionCount: openCount,
+        meta: suggestionsMeta[chat.id],
+        chatLastActivity: getChatLastActivityIso(chat),
+      });
+    }
+    return out;
+  }, [filteredChatsForList, suggestionsByChat, suggestionsMeta, ignoredChatIds]);
+
+  const inboxFilteredChats = useMemo(() => {
+    return filteredChatsForList.filter((c) => {
+      if (!c.id) return false;
+      const status = chatInboxStatusById[c.id] ?? "never";
+      return chatMatchesInboxFilter(status, inboxFilter);
+    });
+  }, [filteredChatsForList, chatInboxStatusById, inboxFilter]);
+
+  const batchTargetChats = useMemo(() => {
+    const base = chatsAvailableForAnalysis;
+    if (batchScope === "all_visible") return base;
+    if (batchScope === "inbox_filtered") {
+      return base.filter((c) => c.id && inboxFilteredChats.some((x) => x.id === c.id));
+    }
+    if (batchScope === "stale") {
+      return base.filter((c) => c.id && chatInboxStatusById[c.id] === "stale");
+    }
+    if (batchScope === "no_cache") {
+      return base.filter((c) => c.id && (chatInboxStatusById[c.id] === "never" || chatInboxStatusById[c.id] === "stale"));
+    }
+    return base;
+  }, [batchScope, chatsAvailableForAnalysis, inboxFilteredChats, chatInboxStatusById]);
+
+  const batchTargetChatIds = useMemo(
+    () => batchTargetChats.map((c) => c.id).filter(Boolean) as string[],
+    [batchTargetChats]
+  );
+
+  const chatNameByIdMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of chats) {
+      if (!c.id) continue;
+      m.set(c.id, (c.name ?? c.participants?.[0]?.name ?? c.id.slice(0, 8)) as string);
+    }
+    return m;
+  }, [chats]);
+
+  const triageQueue = useMemo(
+    () => buildTriageQueue(suggestionsByChat, chatNameByIdMap),
+    [suggestionsByChat, chatNameByIdMap]
+  );
+
+  const setInboxFilter = useCallback((id: TodoInboxFilterId) => {
+    setInboxFilterState(id);
+    setTodoInboxFilter(id);
+  }, []);
+
+  const setWorkMode = useCallback((mode: TodoWorkMode) => {
+    setWorkModeState(mode);
+    setTodoWorkMode(mode);
+    if (mode === "review") setTriageEnabled(true);
+  }, []);
+
+  useEffect(() => {
+    if (workMode === "review") setTriageEnabled(true);
+  }, [workMode]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const resolveModalChatIds = useCallback((): string[] => {
+    if (modalTargetChatIds.length > 0) return modalTargetChatIds;
+    if (analyzeSettingsModalMode === "single" && selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL) {
+      return [selectedChatId];
+    }
+    if (analyzeSettingsModalMode === "selection") {
+      const baseIds =
+        selectedChatIds.length > 0
+          ? selectedChatIds
+          : selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL
+            ? [selectedChatId]
+            : [];
+      return baseIds.filter((id) => !ignoredChatIds.includes(id));
+    }
+    return batchTargetChatIds;
+  }, [
+    modalTargetChatIds,
+    analyzeSettingsModalMode,
+    selectedChatId,
+    selectedChatIds,
+    ignoredChatIds,
+    batchTargetChatIds,
+  ]);
+
   const analyzeMaxAgeDays = useMemo(() => {
     const value = Math.max(1, Math.round(analyzeMaxAgeValue || getTodoAnalyzePrefs().maxAgeValue));
     if (analyzeMaxAgeUnit === "weeks") return value * 7;
@@ -1367,8 +1568,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   }, []);
 
   const runAnalyzeForAllVisible = useCallback(
-    async (settingsOverride?: TodoAnalyzeSettingsValues, onePromptOverride?: string) => {
-    if (chatsAvailableForAnalysis.length === 0 || !accountId) return;
+    async (
+      settingsOverride?: TodoAnalyzeSettingsValues,
+      onePromptOverride?: string,
+      targetChats?: BeeperChat[]
+    ) => {
+    const chatList = targetChats ?? chatsAvailableForAnalysis;
+    if (chatList.length === 0 || !accountId) return;
     const settings = settingsOverride ?? getAnalyzeSettings();
     const analyzeFields = buildAnalyzeRequestFields(settings);
     setSuggestionsByChat({});
@@ -1382,14 +1588,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     setLoadingAllSuggestions(true);
     setLoadingAllError(null);
     setLoadingMessagePagesByChatId({});
-    setLoadingAllProgress({ done: 0, total: chatsAvailableForAnalysis.length, messagesLoaded: 0 });
-    const ids = chatsAvailableForAnalysis.map((c) => c.id).filter(Boolean);
+    setLoadingAllProgress({ done: 0, total: chatList.length, messagesLoaded: 0 });
+    const ids = chatList.map((c) => c.id).filter(Boolean) as string[];
     const doneRef = { current: 0 };
     const failedRef = { current: 0 };
     const stoppedEarlyAfterFailuresRef = { current: false };
     const messagesLoadedRef = { current: 0 };
     const chatNameById = new Map(
-      chatsAvailableForAnalysis.map((c) => [c.id, (c.name ?? (c as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? ""])
+      chatList.map((c) => [c.id, (c.name ?? (c as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? ""])
     );
     try {
       await runWithConcurrency(TODO_ANALYZE_CONCURRENCY, ids, async (chatId) => {
@@ -1488,6 +1694,19 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       setLoadingAllSuggestions(false);
       setLoadingAllProgress(null);
       setLoadingMessagePagesByChatId({});
+      const byChat = suggestionsByChatRef.current;
+      let suggestionCount = 0;
+      let chatCount = 0;
+      for (const list of Object.values(byChat)) {
+        if (list.length > 0) {
+          chatCount += 1;
+          suggestionCount += list.length;
+        }
+      }
+      if (suggestionCount > 0) {
+        setPostAnalyzeBanner({ suggestionCount, chatCount });
+      }
+      void globalMutate((key) => typeof key === "string" && key.startsWith("todo-suggestions-meta"));
       if (failedRef.current > 0) {
         let msg = `${failedRef.current} von ${ids.length} Chats konnten nicht analysiert werden.`;
         if (stoppedEarlyAfterFailuresRef.current) {
@@ -1785,12 +2004,37 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     const visibleChatCount = chatsAvailableForAnalysis.length;
     let selectedChatCount = selectedAnalyzeChatCount;
     if (analyzeSettingsModalMode === "all" || analyzeSettingsModalMode === "one-prompt") {
-      selectedChatCount = visibleChatCount;
+      selectedChatCount = batchTargetChats.length;
     } else if (analyzeSettingsModalMode === "single") {
       selectedChatCount = 1;
     }
     return { selectedChatCount, visibleChatCount };
-  }, [analyzeSettingsModalMode, chatsAvailableForAnalysis.length, selectedAnalyzeChatCount]);
+  }, [analyzeSettingsModalMode, chatsAvailableForAnalysis.length, selectedAnalyzeChatCount, batchTargetChats.length]);
+
+  const quickRunWithPreset = useCallback(
+    (mode: AnalyzeSettingsModalMode, presetId: TodoAnalyzePresetId, targetChats?: BeeperChat[]) => {
+      const draft =
+        presetId === "custom"
+          ? getAnalyzeSettings()
+          : applyTodoAnalyzePreset(presetId, getAnalyzeSettings());
+      applyAnalyzeSettings(draft);
+      if (mode === "all" || mode === "one-prompt") {
+        void runAnalyzeForAllVisible(draft, undefined, targetChats ?? batchTargetChats);
+      } else if (mode === "selection") {
+        void runAnalyzeForSelection(draft);
+      } else {
+        void runAnalyze(draft);
+      }
+    },
+    [
+      applyAnalyzeSettings,
+      getAnalyzeSettings,
+      batchTargetChats,
+      runAnalyzeForAllVisible,
+      runAnalyzeForSelection,
+      runAnalyze,
+    ]
+  );
 
   const selectedChat = selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? chats.find((c) => c.id === selectedChatId) : null;
   const selectedChatName = selectedChat
@@ -1918,6 +2162,69 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     },
     [selectedChatId, selectedChatName, accountId, listIdFilter, mutateTodos, mutateCount]
   );
+
+  const acceptAllInChat = useCallback(
+    async (chatId: string) => {
+      const list = suggestionsByChat[chatId];
+      if (!list?.length) return;
+      const chatName = chatNameByIdMap.get(chatId) ?? chatId;
+      for (let i = list.length - 1; i >= 0; i--) {
+        await acceptSuggestion(list[i], true, chatId, chatName, chatId, i);
+      }
+    },
+    [suggestionsByChat, chatNameByIdMap, acceptSuggestion]
+  );
+
+  const commandPaletteActions = useMemo((): TodoCommandAction[] => {
+    const last = getLastTodoAnalyzePreset() ?? "daily_fast";
+    return [
+      {
+        id: "batch-quick",
+        label: "Batch mit letztem Preset starten",
+        hint: last,
+        run: () => quickRunWithPreset("all", last, batchTargetChats),
+      },
+      {
+        id: "open-dialog",
+        label: "Analyse-Einstellungen öffnen",
+        run: () => openAnalyzeSettingsModal("all", { targetChatIds: batchTargetChatIds }),
+      },
+      {
+        id: "triage",
+        label: triageEnabled ? "Triage aus" : "Triage ein",
+        run: () => setTriageEnabled((v) => !v),
+      },
+      {
+        id: "work-inbox",
+        label: "Modus: Inbox",
+        run: () => setWorkMode("inbox"),
+      },
+      {
+        id: "work-review",
+        label: "Modus: Review",
+        run: () => setWorkMode("review"),
+      },
+      {
+        id: "work-bulk",
+        label: "Modus: Bulk",
+        run: () => setWorkMode("bulk"),
+      },
+      {
+        id: "settings",
+        label: "Todo-Einstellungen",
+        run: () => {
+          window.location.href = buildAppUrl({ view: "settings", tab: "todo" });
+        },
+      },
+    ];
+  }, [
+    batchTargetChats,
+    batchTargetChatIds,
+    triageEnabled,
+    quickRunWithPreset,
+    openAnalyzeSettingsModal,
+    setWorkMode,
+  ]);
 
   const acceptAll = useCallback(async () => {
     if (!suggestions || suggestions.length === 0) return;
@@ -2216,87 +2523,76 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const isOverdue = (due: string | null) => due && due < today();
   const isDueToday = (due: string | null) => due === today();
 
+  const layoutCol1Width =
+    workMode === "review" ? Math.min(col1Width, 220) : workMode === "bulk" ? Math.max(col1Width, 300) : col1Width;
+  const layoutCol2Width =
+    workMode === "review" ? Math.max(col2Width, 520) : workMode === "bulk" ? Math.min(col2Width, 260) : col2Width;
+
+  const handleBatchAnalyzeClick = (
+    e: React.MouseEvent,
+    mode: AnalyzeSettingsModalMode
+  ) => {
+    if (batchTargetChats.length === 0) return;
+    if (e.shiftKey) {
+      openAnalyzeSettingsModal(mode, { targetChatIds: batchTargetChatIds });
+      return;
+    }
+    const preset = getLastTodoAnalyzePreset() ?? "daily_fast";
+    quickRunWithPreset(mode, preset, batchTargetChats);
+  };
+
+  const handleSingleAnalyzeClick = (e: React.MouseEvent) => {
+    if (!selectedChat) return;
+    if (e.shiftKey) {
+      openAnalyzeSettingsModal("single", { chat: selectedChat });
+      return;
+    }
+    const preset = suggestPresetForChat(selectedChat);
+    quickRunWithPreset("single", preset);
+  };
+
   return (
     <>
-      {showAnalyzeSettingsModal && analyzeSettingsDraft && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="analyze-settings-modal-title"
-          onClick={closeAnalyzeSettingsModal}
-        >
-          <div
-            className="flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col rounded-xl border border-wa-border bg-wa-panel shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="shrink-0 border-b border-wa-border p-4">
-              <h2 id="analyze-settings-modal-title" className="text-sm font-semibold text-wa-text-primary">
-                {analyzeSettingsModalMode === "all"
-                  ? "Vorschläge für alle sichtbaren Chats"
-                  : analyzeSettingsModalMode === "selection"
-                    ? "Auswahl analysieren"
-                    : analyzeSettingsModalMode === "single"
-                      ? "Todo-Vorschläge laden"
-                      : "One-Prompt auf alle sichtbaren Chats"}
-              </h2>
-              <p className="mt-1 text-xs text-wa-text-secondary">
-                {analyzeSettingsModalMode === "single"
-                  ? `Einstellungen für ${selectedChatName ?? "diesen Chat"}. Esc schließt ohne Analyse.`
-                  : `Gilt für ${analyzeSettingsModalPreview.selectedChatCount} Chat(s). Esc schließt ohne Analyse (Entwurf wird verworfen).`}
-              </p>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <TodoAnalyzeSettingsForm
-                idPrefix="analyze-settings-modal"
-                values={analyzeSettingsDraft}
-                onChange={(patch) => setAnalyzeSettingsDraft((prev) => (prev ? { ...prev, ...patch } : prev))}
-                preview={analyzeSettingsModalPreview}
-              />
-            </div>
-            <div className="flex shrink-0 gap-2 border-t border-wa-border p-4 justify-end">
-              <button
-                type="button"
-                onClick={closeAnalyzeSettingsModal}
-                title="Dialog schließen ohne zu analysieren"
-                className="rounded-lg border border-wa-border bg-wa-panel-secondary px-3 py-1.5 text-sm font-medium text-wa-text-primary hover:bg-wa-panel"
-              >
-                Abbrechen
-              </button>
-              <button
-                type="button"
-                onClick={confirmAnalyzeSettingsModal}
-                disabled={
-                  analyzeSettingsModalMode === "one-prompt" && !analyzeSettingsDraft.onePromptAllChats.trim()
-                }
-                title={
-                  analyzeSettingsModalMode === "one-prompt"
-                    ? "One-Prompt-Analyse für alle sichtbaren Chats starten"
-                    : "Analyse mit diesen Einstellungen starten"
-                }
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${
-                  analyzeSettingsModalMode === "one-prompt" ? "bg-blue-600" : "bg-wa-green"
-                }`}
-              >
-                {analyzeSettingsModalMode === "all"
-                  ? "Analysieren starten"
-                  : analyzeSettingsModalMode === "selection"
-                    ? "Auswahl analysieren"
-                    : analyzeSettingsModalMode === "single"
-                      ? "Analysieren"
-                      : "One-Prompt starten"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TodoAnalyzeSettingsDialog
+        open={showAnalyzeSettingsModal && !!analyzeSettingsDraft}
+        mode={analyzeSettingsModalMode}
+        draft={analyzeSettingsDraft ?? getAnalyzeSettings()}
+        onDraftChange={(patch) => setAnalyzeSettingsDraft((prev) => (prev ? { ...prev, ...patch } : prev))}
+        onClose={closeAnalyzeSettingsModal}
+        onConfirm={confirmAnalyzeSettingsModal}
+        selectedChatName={selectedChatName}
+        previewScope={analyzeSettingsModalPreview}
+        chatIdsForPreview={resolveModalChatIds()}
+        initialPresetId={modalInitialPreset}
+        emphasizeOnePrompt={analyzeSettingsModalMode === "one-prompt"}
+      />
+      <TodoCommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        actions={commandPaletteActions}
+      />
       <div ref={containerRef} className="flex h-full min-h-0">
       {/* Column 1: Chats */}
       <div
         className="flex shrink-0 flex-col border-r border-wa-border bg-wa-panel"
-        style={{ width: col1Width, minWidth: MIN_COL1 }}
+        style={{ width: layoutCol1Width, minWidth: MIN_COL1 }}
       >
         <div className="border-b border-wa-border p-2">
+          <div className="mb-2 flex gap-0.5 rounded-lg bg-wa-panel-secondary/80 p-0.5">
+            {(["inbox", "review", "bulk"] as TodoWorkMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setWorkMode(m)}
+                title={`Arbeitsmodus: ${WORK_MODE_LABELS[m]}`}
+                className={`flex-1 rounded-md px-1 py-1 text-[10px] font-medium ${
+                  workMode === m ? "bg-wa-green text-white" : "text-wa-text-secondary hover:text-wa-text-primary"
+                }`}
+              >
+                {WORK_MODE_LABELS[m]}
+              </button>
+            ))}
+          </div>
           <div className="mb-2 flex gap-1">
             <button
               type="button"
@@ -2412,6 +2708,22 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     : "Chat-Liste nach Name oder ID filtern"
                 }
               />
+              <TodoInboxFilters value={inboxFilter} onChange={setInboxFilter} />
+              <label className="mb-2 block text-xs text-wa-text-secondary">
+                Batch-Scope
+                <select
+                  value={batchScope}
+                  onChange={(e) => setBatchScope(e.target.value as TodoBatchScope)}
+                  title="Welche Chats für Batch-Analyse gelten"
+                  className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
+                >
+                  {(Object.keys(TODO_BATCH_SCOPE_LABELS) as TodoBatchScope[]).map((scope) => (
+                    <option key={scope} value={scope}>
+                      {TODO_BATCH_SCOPE_LABELS[scope]}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="mb-2">
                 <select
                   value={chatListView}
@@ -2438,9 +2750,17 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   <div className="mt-1.5 flex gap-1.5">
                     <button
                       type="button"
-                      onClick={() => openAnalyzeSettingsModal("selection")}
+                      onClick={(e) => {
+                        if (e.shiftKey) {
+                          const ids = selectedChatIds.filter((id) => !ignoredChatIds.includes(id));
+                          openAnalyzeSettingsModal("selection", { targetChatIds: ids });
+                        } else {
+                          const preset = getLastTodoAnalyzePreset() ?? "daily_fast";
+                          quickRunWithPreset("selection", preset);
+                        }
+                      }}
                       disabled={loadingAllSuggestions}
-                      title="Ausgewählte Chats auf Todo-Vorschläge analysieren"
+                      title="Ausgewählte Chats analysieren (Shift+Klick: Einstellungen)"
                       className="flex-1 rounded-lg bg-wa-green px-2 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
                     >
                       {loadingAllSuggestions && loadingAllProgress ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total}…` : "Auswahl analysieren"}
@@ -2461,24 +2781,23 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               <div className="mb-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (chatsAvailableForAnalysis.length > 0) openAnalyzeSettingsModal("all");
-                  }}
-                  disabled={loadingAllSuggestions || chatsAvailableForAnalysis.length === 0}
-                  title="Alle sichtbaren Chats auf Todo-Vorschläge analysieren"
+                  onClick={(e) => handleBatchAnalyzeClick(e, "all")}
+                  disabled={loadingAllSuggestions || batchTargetChats.length === 0}
+                  title="Batch starten (Shift+Klick: Einstellungen, letztes Preset)"
                   className="w-full rounded-lg border border-wa-border bg-wa-panel-secondary px-2 py-1.5 text-xs font-medium text-wa-text-primary hover:bg-wa-panel disabled:opacity-50"
                 >
                   {loadingAllSuggestions && loadingAllProgress
                     ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats`
-                    : "Vorschläge für alle sichtbaren Chats"}
+                    : `Vorschläge laden (${batchTargetChats.length})`}
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (chatsAvailableForAnalysis.length > 0) openAnalyzeSettingsModal("one-prompt");
+                  onClick={(e) => {
+                    if (batchTargetChats.length === 0) return;
+                    openAnalyzeSettingsModal("one-prompt", { targetChatIds: batchTargetChatIds });
                   }}
-                  disabled={loadingAllSuggestions || chatsAvailableForAnalysis.length === 0}
-                  title="Alle sichtbaren Chats mit genau einem freien Prompt analysieren (Standard-Prompt wird ignoriert)"
+                  disabled={loadingAllSuggestions || batchTargetChats.length === 0}
+                  title="One-Prompt Batch (Shift+Klick: mit Preset-Dialog)"
                   className="mt-1.5 w-full rounded-lg border border-blue-400/40 bg-blue-500/10 px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-500/20 disabled:opacity-50 dark:text-blue-300"
                 >
                   One-Prompt auf alle sichtbaren Chats
@@ -2542,6 +2861,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             const inSelection = selectedChatIds.length > 0 && selectedChatIds.includes(id);
             const suggestionCount = suggestionsByChat[id]?.length ?? 0;
             const ignoredForAnalysis = ignoredChatIds.includes(id);
+            const inboxStatus = id ? chatInboxStatusById[id] : undefined;
             return (
               <button
                 key={id}
@@ -2600,6 +2920,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   ) : null}
                 </span>
                 <span className="ml-1 flex shrink-0 items-center gap-1">
+                  {inboxStatus && (
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${INBOX_STATUS_DOT_CLASS[inboxStatus]}`}
+                      title={INBOX_STATUS_LABELS[inboxStatus]}
+                    />
+                  )}
                   {suggestionCount > 0 && (
                     <span className="rounded bg-wa-panel px-1.5 py-0.5 text-xs text-wa-text-secondary" title="Vorschläge geladen">
                       {suggestionCount}
@@ -2667,9 +2993,56 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       {/* Column 2: Vorschläge (largest) */}
       <div
         className="flex shrink-0 flex-col border-r border-wa-border bg-wa-panel"
-        style={{ width: col2Width, minWidth: MIN_COL2 }}
+        style={{ width: layoutCol2Width, minWidth: MIN_COL2 }}
       >
         <div className="shrink-0 border-b border-wa-border p-2">
+          {leftTab !== "dashboard" && (
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={triageEnabled}
+                  onChange={(e) => setTriageEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-wa-border text-wa-green"
+                />
+                Triage-Modus
+              </label>
+              <button
+                type="button"
+                onClick={() => setCommandPaletteOpen(true)}
+                className="rounded border border-wa-border px-2 py-0.5 text-[10px] text-wa-text-secondary hover:bg-wa-panel-secondary"
+                title="Command Palette (⌘K)"
+              >
+                ⌘K
+              </button>
+            </div>
+          )}
+          {postAnalyzeBanner && leftTab !== "dashboard" && (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-wa-green/40 bg-wa-green/10 px-2 py-2 text-xs">
+              <span className="text-wa-text-primary">
+                {postAnalyzeBanner.suggestionCount} neue Vorschläge in {postAnalyzeBanner.chatCount} Chats
+              </span>
+              <span className="flex gap-2">
+                <button
+                  type="button"
+                  className="font-medium text-wa-green hover:underline"
+                  onClick={() => {
+                    setTriageEnabled(true);
+                    setPostAnalyzeBanner(null);
+                  }}
+                >
+                  Jetzt durchgehen
+                </button>
+                <button
+                  type="button"
+                  className="text-wa-text-secondary hover:underline"
+                  onClick={() => setPostAnalyzeBanner(null)}
+                >
+                  Später
+                </button>
+              </span>
+            </div>
+          )}
           {leftTab === "dashboard" ? (
             <>
               <h2 className="text-sm font-semibold text-wa-text-primary">Dashboard</h2>
@@ -2774,9 +3147,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => openAnalyzeSettingsModal("single")}
+                  onClick={handleSingleAnalyzeClick}
                   disabled={isCurrentChatAnalyzing}
-                  title="Diesen Chat auf Todo-Vorschläge analysieren"
+                  title="Diesen Chat analysieren (Shift+Klick: Einstellungen)"
                   className="flex-1 rounded-lg bg-wa-green px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                 >
                   {isCurrentChatAnalyzing ? "Analysiere…" : "Todo-Vorschläge laden"}
@@ -2809,7 +3182,23 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           )}
         </div>
         <div ref={suggestionsColumnRef} className="flex-1 overflow-y-auto p-2">
-          {loadingAllSuggestions && batchSuggestionsFlat.length > 0 ? (
+          {triageEnabled && leftTab !== "dashboard" && triageQueue.length > 0 ? (
+            <TodoSuggestionTriage
+              items={triageQueue}
+              onReject={(item) => rejectSuggestion(item.chatId, item.indexInChat)}
+              onAccept={(item) => {
+                void acceptSuggestion(
+                  item.suggestion,
+                  true,
+                  item.chatId,
+                  item.chatName,
+                  item.chatId,
+                  item.indexInChat
+                );
+              }}
+              onAcceptAllInChat={acceptAllInChat}
+            />
+          ) : loadingAllSuggestions && batchSuggestionsFlat.length > 0 ? (
             <div>
               <p className="mb-2 text-xs text-wa-text-secondary">
                 Vorschläge von {batchSuggestionsFlat.length > 0 ? new Set(batchSuggestionsFlat.map((x) => x.chatId)).size : 0} Chats (während der Analyse)
@@ -3080,7 +3469,21 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               <p className="text-sm text-wa-text-secondary">Keine Vorschläge in allen Chats vorhanden.</p>
             )
           ) : !selectedChatId && !loadingAllSuggestions ? (
-            <p className="text-sm text-wa-text-secondary">Chat wählen oder „Vorschläge für alle sichtbaren Chats“ starten.</p>
+            <div className="space-y-2 text-sm text-wa-text-secondary">
+              <p>Chat links wählen oder Batch starten.</p>
+              {typeof window !== "undefined" && sessionStorage.getItem(LAST_CHAT_STORAGE_KEY) && (
+                <button
+                  type="button"
+                  className="text-wa-green hover:underline"
+                  onClick={() => {
+                    const last = sessionStorage.getItem(LAST_CHAT_STORAGE_KEY);
+                    if (last) setSelectedChatId(last);
+                  }}
+                >
+                  Letzten Chat öffnen
+                </button>
+              )}
+            </div>
           ) : suggestions && suggestions.length > 0 ? (
             <div>
               {selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && accountId && (
@@ -3213,7 +3616,28 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </div>
           ) : (
             <p className="text-sm text-wa-text-secondary">
-              Keine Vorschläge für diesen Chat. Klicke oben auf „Todo-Vorschläge laden“.
+              <div className="space-y-2 text-sm text-wa-text-secondary">
+                <p>Keine Vorschläge für diesen Chat.</p>
+                <button
+                  type="button"
+                  onClick={handleSingleAnalyzeClick}
+                  className="rounded-lg bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Erneut analysieren
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAnalyzeSettingsModal("single", {
+                      chat: selectedChat ?? undefined,
+                      presetId: "force_refresh",
+                    })
+                  }
+                  className="block text-xs text-wa-text-secondary underline"
+                >
+                  Cache ignorieren (Einstellungen)
+                </button>
+              </div>
             </p>
           )}
         </div>

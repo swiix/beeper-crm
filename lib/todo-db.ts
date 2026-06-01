@@ -181,6 +181,58 @@ function parseTodosJson(raw: string): TodoSuggestionItem[] {
   }
 }
 
+export type TodoSuggestionMeta = {
+  suggestionCount: number;
+  updatedAt: number | null;
+  lastMessageSortKey: string | null;
+  lastAnalyzedSortKey: string | null;
+  todoPromptHash: string | null;
+};
+
+/** Metadata per chat for inbox badges and stale detection. */
+export function listTodoSuggestionsMeta(chatIds?: string[]): Record<string, TodoSuggestionMeta> {
+  const db = getDb();
+  const rows =
+    chatIds && chatIds.length > 0
+      ? (db
+          .prepare(
+            `SELECT chat_id, todos_json, updated_at, last_message_sort_key, last_analyzed_sort_key, todo_prompt_hash FROM chat_todo_suggestions WHERE chat_id IN (${chatIds.map(() => "?").join(",")})`
+          )
+          .all(...chatIds) as {
+          chat_id: string;
+          todos_json: string;
+          updated_at: number;
+          last_message_sort_key: string | null;
+          last_analyzed_sort_key: string | null;
+          todo_prompt_hash: string | null;
+        }[])
+      : (db
+          .prepare(
+            "SELECT chat_id, todos_json, updated_at, last_message_sort_key, last_analyzed_sort_key, todo_prompt_hash FROM chat_todo_suggestions"
+          )
+          .all() as {
+          chat_id: string;
+          todos_json: string;
+          updated_at: number;
+          last_message_sort_key: string | null;
+          last_analyzed_sort_key: string | null;
+          todo_prompt_hash: string | null;
+        }[]);
+
+  const out: Record<string, TodoSuggestionMeta> = {};
+  for (const row of rows) {
+    const todos = parseTodosJson(row.todos_json);
+    out[row.chat_id] = {
+      suggestionCount: todos.length,
+      updatedAt: typeof row.updated_at === "number" ? row.updated_at : null,
+      lastMessageSortKey: row.last_message_sort_key ?? null,
+      lastAnalyzedSortKey: row.last_analyzed_sort_key ?? null,
+      todoPromptHash: row.todo_prompt_hash ?? null,
+    };
+  }
+  return out;
+}
+
 /** Load all persisted suggestion lists for UI hydration (SQLite on disk). */
 export function listTodoSuggestionsMap(chatIds?: string[]): Record<string, TodoSuggestionItem[]> {
   const db = getDb();
