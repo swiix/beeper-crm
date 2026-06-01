@@ -33,6 +33,7 @@ import {
   buildAnalyzeRequestFields,
   type TodoAnalyzeSettingsValues,
 } from "@/components/todo/TodoAnalyzeSettingsForm";
+import { buildAppUrl } from "@/lib/app-routes";
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
 import {
   dueDateTimeToMs,
@@ -2132,10 +2133,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   }, []);
 
   const connectReclaim = useCallback(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("view", "settings");
-    url.searchParams.set("tab", "todo");
-    window.location.href = url.toString();
+    window.location.href = buildAppUrl({ view: "settings", tab: "todo" });
   }, []);
 
   const syncTodoToGoogle = useCallback(

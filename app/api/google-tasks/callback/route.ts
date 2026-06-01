@@ -5,7 +5,8 @@ import { consumeOauthState, exchangeCodeForTokens } from "@/lib/google-tasks";
 const log = createLogger("api:google-tasks:callback");
 
 export async function GET(request: NextRequest) {
-  const appRedirect = new URL("/", request.nextUrl.origin);
+  const appRedirect = new URL("/settings", request.nextUrl.origin);
+  appRedirect.searchParams.set("tab", "todo");
   try {
     const code = request.nextUrl.searchParams.get("code");
     const state = request.nextUrl.searchParams.get("state");

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { buildAppUrl } from "@/lib/app-routes";
 import { useSettings } from "./SettingsContext";
 import { useTheme } from "./ThemeProvider";
 import { SettingsLayout, type SettingsTabDef } from "./settings/SettingsLayout";
@@ -40,7 +41,6 @@ function getMissingPromptKeys(prompt: string): string[] {
 }
 
 export function SettingsView() {
-  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
@@ -48,14 +48,15 @@ export function SettingsView() {
 
   const setActiveTab = useCallback(
     (tabId: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("view", "settings");
-      if (tabId === "general") params.delete("tab");
-      else params.set("tab", tabId);
-      const q = params.toString();
-      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+      router.replace(
+        buildAppUrl({
+          view: "settings",
+          tab: tabId === "general" ? null : tabId,
+        }),
+        { scroll: false }
+      );
     },
-    [pathname, router, searchParams]
+    [router]
   );
 
   const {

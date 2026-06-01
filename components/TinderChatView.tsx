@@ -19,6 +19,7 @@ import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import { dispatchCrmAnalysisUpdated } from "@/lib/crm-analysis-sync";
 import { clampTinderMessagePreloadCount } from "@/lib/chat-message-limits";
+import { buildAppUrl } from "@/lib/app-routes";
 
 function indexOfKeyboardKey(keys: readonly string[], key: string): number {
   return keys.indexOf(key);
@@ -732,11 +733,13 @@ export function TinderChatView({ onOpenChat }: TinderChatViewProps) {
           // Fallback to web open below.
         }
       }
-      const params = new URLSearchParams();
-      params.set("view", "chat");
-      if (accountId?.trim()) params.set("account", accountId.trim());
-      if (chatId?.trim()) params.set("chat", chatId.trim());
-      const url = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+      const path = buildAppUrl({
+        view: "chat",
+        accountId,
+        chatId,
+      });
+      const url =
+        typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
       window.open(url, "_blank", "noopener,noreferrer");
     },
     [accountId, chatId]

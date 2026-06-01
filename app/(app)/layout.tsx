@@ -1,10 +1,10 @@
 import { Suspense } from "react";
 import { AppLayout } from "@/components/AppLayout";
 
-export default function Home() {
+export default function AppShellLayout({ children }: { children: React.ReactNode }) {
   return (
     <Suspense fallback={null}>
-      <AppLayout />
+      <AppLayout>{children}</AppLayout>
     </Suspense>
   );
 }
