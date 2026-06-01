@@ -4,10 +4,14 @@
  */
 
 import { beeperJson } from "@/lib/beeper";
-import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 import { getTranscript } from "@/lib/transcribe";
+import {
+  fetchLastChatMessages,
+  isAudioAttachment,
+  type BeeperMessagesResponse,
+} from "@/lib/beeper-chat-messages";
 
 const MESSAGE_LIMIT = MAX_CHAT_MESSAGES;
 
@@ -16,46 +20,26 @@ interface MessageItem {
   senderName?: string;
   isSender?: boolean;
   attachments?: Array<{ type?: string; srcURL?: string; id?: string }>;
-}
-
-function isAudioAttachment(att: { type?: string }): boolean {
-  return (att.type ?? "").toLowerCase() === "audio";
-}
-
-interface BeeperMessagesResponse {
-  items?: Array<MessageItem & { sortKey?: string }>;
-  hasMore?: boolean;
+  sortKey?: string;
+  timestamp?: string;
 }
 
 export async function fetchLastMessages(chatId: string, limit: number): Promise<MessageItem[]> {
-  const collected: MessageItem[] = [];
-  let cursor: string | null = null;
-  const pathBase = `/v1/chats/${encodeURIComponent(chatId)}/messages`;
-  for (;;) {
-    const params = new URLSearchParams();
-    if (cursor) {
-      params.set("cursor", cursor);
-      params.set("direction", "before");
-    }
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    const data = await beeperJson<BeeperMessagesResponse>(`${pathBase}${suffix}`);
-    const items = data?.items ?? [];
-    for (const m of items) {
-      collected.push({
-        text: m.text,
-        senderName: m.senderName,
-        isSender: m.isSender,
-        attachments: m.attachments,
-      });
-    }
-    const hasMore = data?.hasMore ?? false;
-    const nextCursor = resolveBeeperMessagesBeforeCursor(data ?? {});
-    if (collected.length >= limit || !hasMore || !nextCursor) break;
-    cursor = nextCursor;
-  }
-  const last = collected.slice(0, limit);
-  last.reverse();
-  return last;
+  return fetchLastChatMessages<MessageItem, MessageItem>(
+    chatId,
+    {
+      limit,
+      fetchPage: (path) => beeperJson<BeeperMessagesResponse<MessageItem>>(path),
+    },
+    (m) => ({
+      text: m.text,
+      senderName: m.senderName,
+      isSender: m.isSender,
+      attachments: m.attachments,
+      sortKey: m.sortKey,
+      timestamp: m.timestamp,
+    })
+  );
 }
 
 /** Transcribe all audio in messages for one chat (fills transcript cache). */

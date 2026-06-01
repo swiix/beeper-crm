@@ -4,7 +4,6 @@ import { cacheGet, cacheSet } from "@/lib/cache";
 import { getCacheTTLMs } from "@/lib/cache-settings";
 import { createLogger } from "@/lib/logger";
 import { beeperJson } from "@/lib/beeper";
-import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import {
   readPrompts,
   DEFAULT_TINDER_SUGGESTIONS_COUNT,
@@ -15,6 +14,12 @@ import { getAnalysis, getAnalysisCacheRow, saveAnalysis } from "@/lib/analysis-d
 import { computeAnalysisPromptHash, ANALYSIS_CHAT_MODEL } from "@/lib/analysis-prompt-hash";
 import { getOrRunInflightAnalysis, inflightAnalysisKey } from "@/lib/analysis-inflight";
 import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
+import {
+  fetchLastChatMessages,
+  fetchLatestChatMarker as fetchLatestMarkerShared,
+  isAudioAttachment,
+  type BeeperMessagesResponse,
+} from "@/lib/beeper-chat-messages";
 
 const log = createLogger("api:analyze");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -26,22 +31,13 @@ const SAFE_REQUEST_INPUT_TOKENS = 110000;
 const SAFE_CHUNK_INPUT_TOKENS = 24000;
 const MIN_CHUNK_SIZE = 8;
 
-interface AudioAttachment {
-  type?: string;
-  srcURL?: string;
-  id?: string;
-}
-
 interface MessageItem {
   text?: string;
   senderName?: string;
   isSender?: boolean;
-  attachments?: AudioAttachment[];
-}
-
-function isAudioAttachment(a: AudioAttachment): boolean {
-  const t = (a.type ?? "").toLowerCase();
-  return t === "audio";
+  attachments?: Array<{ type?: string; srcURL?: string; id?: string }>;
+  sortKey?: string;
+  timestamp?: string;
 }
 
 /** Build transcript for analysis: text messages + transcribed audio (all visible audios transcribed first). */
@@ -74,21 +70,15 @@ async function buildMessagesPayloadWithTranscription(
   return lines.filter(Boolean).join("\n");
 }
 
-/** Beeper messages list response: no nextCursor; use message.sortKey as cursor for next page. */
-interface BeeperMessagesResponse {
-  items?: Array<MessageItem & { sortKey?: string }>;
-  hasMore?: boolean;
-}
-
 interface ChatMarker {
   sortKey: string | null;
 }
 
 async function fetchLatestChatMarker(chatId: string): Promise<ChatMarker> {
-  const path = `/v1/chats/${encodeURIComponent(chatId)}/messages`;
-  const data = await beeperJson<BeeperMessagesResponse>(path);
-  const newest = data?.items?.[0];
-  return { sortKey: newest?.sortKey ?? null };
+  const marker = await fetchLatestMarkerShared<MessageItem>(chatId, (path) =>
+    beeperJson<BeeperMessagesResponse<MessageItem>>(path)
+  );
+  return { sortKey: marker.sortKey };
 }
 
 function markerCacheKey(chatId: string, isTinder: boolean): string {
@@ -129,34 +119,21 @@ function isPersistedAnalysisFresh(
 
 /** Fetch last messages for a chat (with attachments). Returns chronological (oldest first). */
 async function fetchLastMessages(chatId: string, limit: number | null): Promise<MessageItem[]> {
-  const collected: MessageItem[] = [];
-  let cursor: string | null = null;
-  const pathBase = `/v1/chats/${encodeURIComponent(chatId)}/messages`;
-  for (;;) {
-    const params = new URLSearchParams();
-    if (cursor) {
-      params.set("cursor", cursor);
-      params.set("direction", "before");
-    }
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    const data = await beeperJson<BeeperMessagesResponse>(`${pathBase}${suffix}`);
-    const items = data?.items ?? [];
-    for (const m of items) {
-      collected.push({
-        text: m.text,
-        senderName: m.senderName,
-        isSender: m.isSender,
-        attachments: m.attachments,
-      });
-    }
-    const hasMore = data?.hasMore ?? false;
-    const nextCursor = resolveBeeperMessagesBeforeCursor(data ?? {});
-    if ((limit != null && collected.length >= limit) || !hasMore || !nextCursor) break;
-    cursor = nextCursor;
-  }
-  const last = limit != null ? collected.slice(0, limit) : collected;
-  last.reverse();
-  return last;
+  return fetchLastChatMessages<MessageItem, MessageItem>(
+    chatId,
+    {
+      limit,
+      fetchPage: (path) => beeperJson<BeeperMessagesResponse<MessageItem>>(path),
+    },
+    (m) => ({
+      text: m.text,
+      senderName: m.senderName,
+      isSender: m.isSender,
+      attachments: m.attachments,
+      sortKey: m.sortKey,
+      timestamp: m.timestamp,
+    })
+  );
 }
 
 function getSystemPromptBase(): string {

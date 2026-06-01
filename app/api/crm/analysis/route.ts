@@ -4,15 +4,13 @@ import { getCacheTTLMs } from "@/lib/cache-settings";
 import { getAnalysisCacheRow } from "@/lib/analysis-db";
 import { beeperJson } from "@/lib/beeper";
 import type { ContactAnalysis } from "@/lib/types";
-
-interface BeeperMessagesResponse {
-  items?: Array<{ sortKey?: string }>;
-}
+import { fetchLatestChatMarker as fetchLatestMarkerShared, type BeeperMessagesResponse } from "@/lib/beeper-chat-messages";
 
 async function fetchLatestChatMarker(chatId: string): Promise<string | null> {
-  const path = `/v1/chats/${encodeURIComponent(chatId)}/messages`;
-  const data = await beeperJson<BeeperMessagesResponse>(path);
-  return data?.items?.[0]?.sortKey ?? null;
+  const marker = await fetchLatestMarkerShared<{ sortKey?: string; timestamp?: string }>(chatId, (path) =>
+    beeperJson<BeeperMessagesResponse<{ sortKey?: string; timestamp?: string }>>(path)
+  );
+  return marker.sortKey;
 }
 
 function normalizeChatIds(chatIdsRaw: string[]): string[] {

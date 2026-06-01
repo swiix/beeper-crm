@@ -8,7 +8,6 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger";
-import { resolveBeeperMessagesBeforeCursor } from "@/lib/beeper-messages-cursor";
 import { readTodoSettings } from "@/lib/todo-settings";
 import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
@@ -26,6 +25,12 @@ import {
   todoAnalysisBeeperJson,
 } from "@/lib/todo-list-analysis-trace-log";
 import { computeTodoAnalysisPromptHash } from "@/lib/todo-prompt-hash";
+import {
+  fetchLastChatMessages,
+  fetchLatestChatMarker as fetchLatestMarkerShared,
+  isAudioAttachment,
+  type BeeperMessagesResponse,
+} from "@/lib/beeper-chat-messages";
 
 const log = createLogger("api:todo-list:analyze");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -45,18 +50,9 @@ interface MessageItem {
   attachments?: MessageAttachment[];
 }
 
-function isAudioAttachment(a: MessageAttachment): boolean {
-  return (a.type ?? "").toLowerCase() === "audio";
-}
-
 function isImageAttachment(a: MessageAttachment): boolean {
   const t = (a.type ?? "").toLowerCase();
   return t === "img" || t === "image" || t === "sticker" || t === "gif";
-}
-
-interface BeeperMessagesResponse {
-  items?: Array<MessageItem & { sortKey?: string }>;
-  hasMore?: boolean;
 }
 
 interface FetchMessagesOptions {
@@ -81,53 +77,30 @@ async function fetchLastMessages(
   options: FetchMessagesOptions
 ): Promise<MessageItem[]> {
   const { maxCount, minTimestampMs, onPage } = options;
-  const collected: MessageItem[] = [];
-  let cursor: string | null = null;
-  let page = 0;
   const HARD_FETCH_CAP = 4000;
-  const pathBase = `/v1/chats/${encodeURIComponent(chatId)}/messages`;
-  for (;;) {
-    page += 1;
-    onPage?.(page);
-    const params = new URLSearchParams();
-    if (cursor) {
-      params.set("cursor", cursor);
-      params.set("direction", "before");
-    }
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    const data = await todoAnalysisBeeperJson<BeeperMessagesResponse>(`${pathBase}${suffix}`, {
-      chatId,
-      phase: "beeper_messages",
-      page,
-    });
-    const items = data?.items ?? [];
-    let addedFromPage = 0;
-    for (const m of items) {
-      const ts = typeof m.timestamp === "string" ? new Date(m.timestamp).getTime() : NaN;
-      if (minTimestampMs != null && Number.isFinite(ts) && ts < minTimestampMs) {
-        continue;
-      }
-      collected.push({
-        text: m.text,
-        senderName: m.senderName,
-        isSender: m.isSender,
-        timestamp: m.timestamp,
-        sortKey: m.sortKey,
-        attachments: m.attachments,
-      });
-      addedFromPage += 1;
-      if (maxCount != null && maxCount > 0 && collected.length >= maxCount) break;
-    }
-    const hasMore = data?.hasMore ?? false;
-    const nextCursor = resolveBeeperMessagesBeforeCursor(data ?? {});
-    if ((maxCount != null && maxCount > 0 && collected.length >= maxCount) || !hasMore || !nextCursor) break;
-    if (collected.length >= HARD_FETCH_CAP) break;
-    // If age filter active and this page didn't add any entries, we're likely fully past the cutoff.
-    if (minTimestampMs != null && addedFromPage === 0) break;
-    cursor = nextCursor;
-  }
-  collected.reverse();
-  return collected;
+  return fetchLastChatMessages<MessageItem, MessageItem>(
+    chatId,
+    {
+      limit: maxCount,
+      minTimestampMs,
+      hardFetchCap: HARD_FETCH_CAP,
+      onPage,
+      fetchPage: (path, page) =>
+        todoAnalysisBeeperJson<BeeperMessagesResponse<MessageItem>>(path, {
+          chatId,
+          phase: "beeper_messages",
+          page,
+        }),
+    },
+    (m) => ({
+      text: m.text,
+      senderName: m.senderName,
+      isSender: m.isSender,
+      timestamp: m.timestamp,
+      sortKey: m.sortKey,
+      attachments: m.attachments,
+    })
+  );
 }
 
 /** Ensure todo title starts with contact first name prefix when contactName is provided. */
@@ -286,13 +259,13 @@ function toDateOnly(isoOrNull: string | undefined): string | null {
 }
 
 async function fetchLatestChatMarker(chatId: string): Promise<ChatMarker> {
-  const pathBase = `/v1/chats/${encodeURIComponent(chatId)}/messages`;
-  const data = await todoAnalysisBeeperJson<BeeperMessagesResponse>(pathBase, { chatId, phase: "beeper_chat_marker" });
-  const newest = (data?.items ?? [])[0];
-  return {
-    sortKey: newest?.sortKey ?? null,
-    timestamp: typeof newest?.timestamp === "string" ? newest.timestamp : null,
-  };
+  const marker = await fetchLatestMarkerShared<MessageItem>(chatId, (path) =>
+    todoAnalysisBeeperJson<BeeperMessagesResponse<MessageItem>>(path, {
+      chatId,
+      phase: "beeper_chat_marker",
+    })
+  );
+  return { sortKey: marker.sortKey, timestamp: marker.timestamp };
 }
 
 function selectMessagesForDelta(messages: MessageItem[], lastAnalyzedSortKey: string | null): MessageItem[] {
