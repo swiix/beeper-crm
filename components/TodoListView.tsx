@@ -662,6 +662,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const [analyzeErrorByChatId, setAnalyzeErrorByChatId] = useState<Record<string, string>>({});
   const [loadingAllSuggestions, setLoadingAllSuggestions] = useState(false);
   const [loadingAllProgress, setLoadingAllProgress] = useState<{ done: number; total: number; messagesLoaded: number } | null>(null);
+  const [allSuggestionsQuery, setAllSuggestionsQuery] = useState("");
   /** Per-chat message fetch page count during analyze (for "Lade Nachrichten #N" display). */
   const [loadingMessagePagesByChatId, setLoadingMessagePagesByChatId] = useState<Record<string, number>>({});
   const [lastAnalyzedMessageCount, setLastAnalyzedMessageCount] = useState<number | null>(null);
@@ -1704,6 +1705,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     }
     return out;
   }, [selectedChatId, chats, suggestionsByChat]);
+
+  const filteredAllSuggestionsFlat = useMemo(() => {
+    const q = allSuggestionsQuery.trim().toLowerCase();
+    if (!q) return allSuggestionsFlat;
+    return allSuggestionsFlat.filter(({ chatName, suggestion }) => {
+      const haystack = `${chatName}\n${suggestion.title}\n${suggestion.notes ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [allSuggestionsFlat, allSuggestionsQuery]);
 
   /** During batch load: flat list of suggestions in completion order (append-only), so viewport doesn't jump. */
   const batchSuggestionsFlat = useMemo(() => {
@@ -2948,8 +2958,20 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 <p className="mb-2 text-xs text-wa-text-secondary">
                   Alle Vorschläge aus {new Set(allSuggestionsFlat.map((x) => x.chatId)).size} Chats
                 </p>
+                <input
+                  type="text"
+                  value={allSuggestionsQuery}
+                  onChange={(e) => setAllSuggestionsQuery(e.target.value)}
+                  placeholder="Volltextsuche in Chat, Titel, Notizen…"
+                  className="mb-3 w-full rounded-lg border border-wa-border bg-wa-input-bg px-3 py-2 text-sm text-wa-text-primary placeholder:text-wa-text-secondary"
+                />
+                {allSuggestionsQuery.trim() && (
+                  <p className="mb-2 text-xs text-wa-text-secondary">
+                    Treffer: {filteredAllSuggestionsFlat.length} / {allSuggestionsFlat.length}
+                  </p>
+                )}
                 <ul className="space-y-2">
-                  {allSuggestionsFlat.map(({ chatId, chatName, suggestion: s, indexInChat }, idx) => {
+                  {filteredAllSuggestionsFlat.map(({ chatId, chatName, suggestion: s, indexInChat }, idx) => {
                     const isEditing = editingSuggestion?.chatId === chatId && editingSuggestion?.index === indexInChat;
                     return (
                       <li
@@ -3063,6 +3085,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     );
                   })}
                 </ul>
+                {allSuggestionsQuery.trim() && filteredAllSuggestionsFlat.length === 0 && (
+                  <p className="mt-3 text-sm text-wa-text-secondary">Keine Treffer für die Suche.</p>
+                )}
               </div>
             ) : (
               <p className="text-sm text-wa-text-secondary">Keine Vorschläge in allen Chats vorhanden.</p>
