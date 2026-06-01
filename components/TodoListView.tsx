@@ -696,6 +696,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const [chatListView, setChatListView] = useState<ChatListViewType>("all");
   const [analyzePromptSuffix, setAnalyzePromptSuffix] = useState("");
   const [onePromptAllChats, setOnePromptAllChats] = useState("");
+  const [promptSettingsExpanded, setPromptSettingsExpanded] = useState(false);
   const [onePromptDialogOpen, setOnePromptDialogOpen] = useState(false);
   const [onePromptResults, setOnePromptResults] = useState<OnePromptDialogResult[]>([]);
   const [onePromptRunLoading, setOnePromptRunLoading] = useState(false);
@@ -2692,28 +2693,53 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           )}
           {leftTab !== "dashboard" && (
           <div className="mt-2">
-            <label htmlFor="analyze-prompt-suffix" className="block text-xs font-medium text-wa-text-secondary">
-              Zusatz zum Prompt (wird an den System-Prompt angehängt)
-            </label>
-            <textarea
-              id="analyze-prompt-suffix"
-              placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
-              value={analyzePromptSuffix}
-              onChange={(e) => setAnalyzePromptSuffix(e.target.value)}
-              rows={2}
-              className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
-            />
-            <label htmlFor="analyze-one-prompt-all" className="mt-2 block text-xs font-medium text-wa-text-secondary">
-              One-Prompt (nur für "One-Prompt auf alle sichtbaren Chats")
-            </label>
-            <textarea
-              id="analyze-one-prompt-all"
-              placeholder="Freier Prompt für alle Chats. Nur Ergebnisse aus diesem Prompt werden übernommen."
-              value={onePromptAllChats}
-              onChange={(e) => setOnePromptAllChats(e.target.value)}
-              rows={5}
-              className="mt-1 w-full rounded-lg border border-blue-400/30 bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-blue-400 focus:outline-none"
-            />
+            <div className="rounded-lg border border-wa-border/80">
+              <button
+                type="button"
+                onClick={() => setPromptSettingsExpanded((open) => !open)}
+                aria-expanded={promptSettingsExpanded}
+                aria-controls="todo-prompt-settings-panel"
+                title={promptSettingsExpanded ? "Prompt-Felder einklappen" : "Prompt-Felder ausklappen"}
+                className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-wa-text-secondary hover:bg-wa-panel-secondary/50"
+              >
+                <span>Prompt-Einstellungen</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  {!promptSettingsExpanded &&
+                    (analyzePromptSuffix.trim() || onePromptAllChats.trim()) && (
+                      <span className="font-normal text-wa-green">ausgefüllt</span>
+                    )}
+                  <span className="text-[10px] text-wa-text-secondary" aria-hidden>
+                    {promptSettingsExpanded ? "▼" : "▶"}
+                  </span>
+                </span>
+              </button>
+              {promptSettingsExpanded && (
+                <div id="todo-prompt-settings-panel" className="border-t border-wa-border/80 px-2 pb-2 pt-1">
+                  <label htmlFor="analyze-prompt-suffix" className="block text-xs font-medium text-wa-text-secondary">
+                    Zusatz zum Prompt (wird an den System-Prompt angehängt)
+                  </label>
+                  <textarea
+                    id="analyze-prompt-suffix"
+                    placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
+                    value={analyzePromptSuffix}
+                    onChange={(e) => setAnalyzePromptSuffix(e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+                  />
+                  <label htmlFor="analyze-one-prompt-all" className="mt-2 block text-xs font-medium text-wa-text-secondary">
+                    One-Prompt (nur für "One-Prompt auf alle sichtbaren Chats")
+                  </label>
+                  <textarea
+                    id="analyze-one-prompt-all"
+                    placeholder="Freier Prompt für alle Chats. Nur Ergebnisse aus diesem Prompt werden übernommen."
+                    value={onePromptAllChats}
+                    onChange={(e) => setOnePromptAllChats(e.target.value)}
+                    rows={5}
+                    className="mt-1 w-full rounded-lg border border-blue-400/30 bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-blue-400 focus:outline-none"
+                  />
+                </div>
+              )}
+            </div>
             <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
               <label className="block text-xs text-wa-text-secondary">
                 Analyse-Modus
