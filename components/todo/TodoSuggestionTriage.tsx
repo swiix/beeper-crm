@@ -15,7 +15,6 @@ type TodoSuggestionTriageProps = {
   items: TriageQueueItem[];
   onAccept: (item: TriageQueueItem) => void | Promise<void>;
   onReject: (item: TriageQueueItem) => void;
-  onAcceptAllInChat: (chatId: string) => void | Promise<void>;
   /** Opens the source chat in a new tab (e.g. /chat). */
   onOpenChat?: (chatId: string) => void;
   onPersistSuggestion?: (item: TriageQueueItem, patch: Partial<EditableTodoSuggestion>) => void;
@@ -40,7 +39,6 @@ export function TodoSuggestionTriage({
   items,
   onAccept,
   onReject,
-  onAcceptAllInChat,
   onOpenChat,
   onPersistSuggestion,
   onChatNameChange,
@@ -84,14 +82,14 @@ export function TodoSuggestionTriage({
       } else if (k === "k" || k === "arrowright") {
         e.preventDefault();
         void handleAccept();
-      } else if (k === "a" && current) {
+      } else if (k === "c" && current && onOpenChat) {
         e.preventDefault();
-        void onAcceptAllInChat(current.chatId);
+        onOpenChat(current.chatId);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, handleAccept, handleReject, onAcceptAllInChat, editingField]);
+  }, [current, handleAccept, handleReject, onOpenChat, editingField]);
 
   if (items.length === 0) {
     return (
@@ -141,10 +139,11 @@ export function TodoSuggestionTriage({
             type="button"
             onClick={() => onOpenChat(current.chatId)}
             disabled={Boolean(editingField)}
-            title="Chat in neuem Tab öffnen"
+            title="Chat in neuem Tab öffnen (C)"
             className="rounded-xl border border-wa-border bg-wa-panel px-4 py-2.5 text-sm font-medium text-wa-text-primary transition hover:bg-wa-panel-secondary disabled:opacity-40"
           >
             Chat öffnen
+            <span className="ml-1.5 hidden text-xs opacity-70 sm:inline">C</span>
           </button>
         )}
         <button
@@ -167,23 +166,16 @@ export function TodoSuggestionTriage({
           Annehmen
           <span className="ml-1.5 hidden text-xs opacity-80 sm:inline">K</span>
         </button>
-        <button
-          type="button"
-          onClick={() => void onAcceptAllInChat(current.chatId)}
-          disabled={Boolean(editingField)}
-          title="Alle Vorschläge dieses Chats annehmen (A)"
-          className="rounded-xl border border-wa-border bg-wa-panel-secondary/80 px-3 py-2.5 text-xs font-medium text-wa-text-primary transition hover:bg-wa-panel disabled:opacity-40"
-        >
-          Alle aus Chat
-          <span className="ml-1 opacity-70">A</span>
-        </button>
       </div>
 
       <p className="mt-4 max-w-md text-center text-[11px] leading-relaxed text-wa-text-secondary">
         {editingField ? (
           <>Feld bearbeiten · Esc speichern &amp; schließen · Shortcuts pausiert</>
         ) : (
-          <>Auf Chat, Titel, Frist oder Details tippen zum Bearbeiten · J ablehnen · K annehmen</>
+          <>
+            Auf Chat, Titel, Frist oder Details tippen zum Bearbeiten · J ablehnen · K annehmen
+            {onOpenChat ? " · C Chat öffnen" : ""}
+          </>
         )}
       </p>
 

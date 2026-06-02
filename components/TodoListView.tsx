@@ -1964,18 +1964,6 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     [selectedChatId, selectedChatName, accountId, listIdFilter, mutateTodos, mutateCount]
   );
 
-  const acceptAllInChat = useCallback(
-    async (chatId: string) => {
-      const list = suggestionsByChat[chatId];
-      if (!list?.length) return;
-      const chatName = chatNameByIdMap.get(chatId) ?? chatId;
-      for (let i = list.length - 1; i >= 0; i--) {
-        await acceptSuggestion(list[i], true, chatId, chatName, chatId, i);
-      }
-    },
-    [suggestionsByChat, chatNameByIdMap, acceptSuggestion]
-  );
-
   const commandPaletteActions = useMemo((): TodoCommandAction[] => {
     const last = getLastTodoAnalyzePreset() ?? "daily_fast";
     return [
@@ -3024,7 +3012,6 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   item.indexInChat
                 );
               }}
-              onAcceptAllInChat={acceptAllInChat}
               onOpenChat={
                 accountId ? (chatId) => onOpenChat(chatId, accountId) : undefined
               }
