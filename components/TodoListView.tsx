@@ -39,6 +39,10 @@ import {
 import { TodoAnalyzeCacheControl } from "@/components/todo/TodoAnalyzeCacheControl";
 import { TodoInboxFilters } from "@/components/todo/TodoInboxFilters";
 import {
+  TodoSuggestionInlineEditor,
+  type SuggestionEditFocus,
+} from "@/components/todo/TodoSuggestionInlineEditor";
+import {
   TodoSuggestionTriage,
   buildTriageQueue,
   type TriageQueueItem,
@@ -382,8 +386,6 @@ function writeStoredTodoSuggestionsView(form: TodoSuggestionsViewStored): void {
   );
 }
 
-type SuggestionEditFocus = "title" | "due" | "notes";
-
 function formatSuggestionDue(s: TodoSuggestionItem): string {
   return formatDueDateTimeRelative(suggestionDueToDateTime(s.due, s.due_time));
 }
@@ -396,231 +398,6 @@ function suggestionToDueApiFields(s: { due: string | null; due_time?: string | n
     due_time: dt.time ?? undefined,
     due_at: due_at ?? undefined,
   };
-}
-
-/** Inline suggestion editor with custom due date/time picker. */
-function TodoSuggestionInlineEditor(props: {
-  suggestion: TodoSuggestionItem;
-  initialFocus?: SuggestionEditFocus;
-  onPersist: (patch: Partial<TodoSuggestionItem>) => void;
-  onFinish: () => void;
-}) {
-  const { suggestion, initialFocus, onPersist, onFinish } = props;
-
-  const [title, setTitle] = useState(suggestion.title);
-  const [dueDateTime, setDueDateTime] = useState<DueDateTime>(() =>
-    suggestionDueToDateTime(suggestion.due, suggestion.due_time)
-  );
-  const [duePickerOpen, setDuePickerOpen] = useState(false);
-  const [notes, setNotes] = useState(() => suggestion.notes?.trim() ?? "");
-  const [hoursStr, setHoursStr] = useState(() => {
-    if (suggestion.estimated_time_hours != null) return String(suggestion.estimated_time_hours);
-    if (suggestion.estimated_time_minutes != null) return String(Number((suggestion.estimated_time_minutes / 60).toFixed(2)));
-    return "";
-  });
-
-  useEffect(() => {
-    setTitle(suggestion.title);
-    setDueDateTime(suggestionDueToDateTime(suggestion.due, suggestion.due_time));
-    setNotes(suggestion.notes?.trim() ?? "");
-    if (suggestion.estimated_time_hours != null) setHoursStr(String(suggestion.estimated_time_hours));
-    else if (suggestion.estimated_time_minutes != null) setHoursStr(String(Number((suggestion.estimated_time_minutes / 60).toFixed(2))));
-    else setHoursStr("");
-  }, [suggestion.title, suggestion.due, suggestion.due_time, suggestion.notes, suggestion.estimated_time_hours, suggestion.estimated_time_minutes]);
-
-  const titleRef = useRef<HTMLInputElement>(null);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
-
-  const flushDurationIntoParent = useCallback(() => {
-    const raw = hoursStr.trim();
-    const hours = raw === "" ? null : Number(raw.replace(",", "."));
-    if (hours == null || Number.isNaN(hours) || hours < 0) {
-      if (suggestion.estimated_time_minutes != null || suggestion.estimated_time_hours != null) {
-        onPersist({ estimated_time_minutes: null, estimated_time_hours: null });
-      }
-      return;
-    }
-    const roundedHours = Number(hours.toFixed(2));
-    const minutes = Math.round(roundedHours * 60);
-    if (minutes !== suggestion.estimated_time_minutes || roundedHours !== suggestion.estimated_time_hours) {
-      onPersist({ estimated_time_minutes: minutes, estimated_time_hours: roundedHours });
-    }
-  }, [
-    hoursStr,
-    onPersist,
-    suggestion.estimated_time_hours,
-    suggestion.estimated_time_minutes,
-  ]);
-
-  const persistFieldsAndClose = useCallback(() => {
-    const tid = title.trim();
-    if (tid && tid !== suggestion.title) onPersist({ title: tid });
-
-    const dueNorm = syncDueDateFromDateTime(dueDateTime);
-    const timeNorm = dueDateTime.time;
-    if (dueNorm !== (suggestion.due ?? null) || timeNorm !== (suggestion.due_time ?? null)) {
-      onPersist({ due: dueNorm, due_time: timeNorm });
-    }
-
-    const n = notes.trim() || null;
-    if (n !== (suggestion.notes ?? null)) onPersist({ notes: n });
-
-    flushDurationIntoParent();
-    onFinish();
-  }, [title, dueDateTime, notes, suggestion.title, suggestion.due, suggestion.due_time, suggestion.notes, onPersist, onFinish, flushDurationIntoParent]);
-
-  useLayoutEffect(() => {
-    const id = requestAnimationFrame(() => {
-      const focus = initialFocus ?? "title";
-      if (focus === "title") {
-        titleRef.current?.focus();
-        titleRef.current?.select();
-      } else if (focus === "notes") {
-        notesRef.current?.focus();
-        notesRef.current?.setSelectionRange(
-          notesRef.current.value.length,
-          notesRef.current.value.length
-        );
-      } else {
-        setDuePickerOpen(true);
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [initialFocus]);
-
-  const onEnterSaveInput = useCallback(
-    (e: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (e.key !== "Enter" || e.shiftKey) return;
-      e.preventDefault();
-      persistFieldsAndClose();
-    },
-    [persistFieldsAndClose]
-  );
-
-  const escapeCancelRef = useRef(false);
-  useEffect(() => {
-    const onEsc = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      escapeCancelRef.current = true;
-      e.preventDefault();
-      onFinish();
-    };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [onFinish]);
-
-  const onNotesKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key !== "Enter") return;
-      if (e.shiftKey) {
-        e.preventDefault();
-        const el = e.currentTarget;
-        const start = el.selectionStart ?? 0;
-        const end = el.selectionEnd ?? 0;
-        setNotes((prev) => prev.slice(0, start) + "\n" + prev.slice(end));
-        queueMicrotask(() => {
-          const pos = start + 1;
-          try {
-            el.setSelectionRange(pos, pos);
-          } catch {
-            /* ignore */
-          }
-        });
-        return;
-      }
-      e.preventDefault();
-      persistFieldsAndClose();
-    },
-    [persistFieldsAndClose]
-  );
-
-  return (
-    <div className="mt-2 space-y-2">
-      <div>
-        <label className="block text-xs text-wa-text-secondary">Titel · Enter speichern &amp; schließen · Esc abbrechen</label>
-        <input
-          ref={titleRef}
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={(e) => {
-            if (escapeCancelRef.current) {
-              escapeCancelRef.current = false;
-              return;
-            }
-            const v = e.target.value.trim();
-            if (v && v !== suggestion.title) onPersist({ title: v });
-          }}
-          onKeyDown={onEnterSaveInput}
-          className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-wa-text-primary"
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-wa-text-secondary">Frist (Datum &amp; Uhrzeit)</label>
-        <DueDatePicker
-          className="mt-0.5"
-          value={dueDateTime}
-          defaultOpen={duePickerOpen || initialFocus === "due"}
-          onChange={(next) => {
-            setDueDateTime(next);
-            onPersist({
-              due: syncDueDateFromDateTime(next),
-              due_time: next.time,
-            });
-          }}
-          onClose={() => setDuePickerOpen(false)}
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-wa-text-secondary">Details · Enter speichern, Shift+Enter neue Zeile</label>
-        <textarea
-          ref={notesRef}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={(e) => {
-            if (escapeCancelRef.current) {
-              escapeCancelRef.current = false;
-              return;
-            }
-            const v = e.target.value.trim() || null;
-            if (v !== (suggestion.notes ?? null)) onPersist({ notes: v });
-          }}
-          rows={4}
-          onKeyDown={onNotesKeyDown}
-          className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-wa-text-secondary">Dauer (Stunden)</label>
-        <input
-          type="number"
-          min={0}
-          step={0.25}
-          value={hoursStr}
-          onChange={(e) => setHoursStr(e.target.value)}
-          onBlur={() => {
-            if (escapeCancelRef.current) {
-              escapeCancelRef.current = false;
-              return;
-            }
-            flushDurationIntoParent();
-          }}
-          onKeyDown={onEnterSaveInput}
-          className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-wa-text-primary"
-        />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={persistFieldsAndClose}
-          title="Alle Felder speichern und Bearbeitungsmodus beenden (wie Enter außer in der Beschreibung)"
-          className="rounded border border-wa-green bg-wa-green/15 px-2 py-1 text-xs font-medium text-wa-green"
-        >
-          Fertig (Speichern)
-        </button>
-      </div>
-    </div>
-  );
 }
 
 /** Max concurrent todo-list analyze requests when loading suggestions for all visible chats. */
@@ -777,6 +554,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     chatCount: number;
   } | null>(null);
   const [batchZeroResultsHint, setBatchZeroResultsHint] = useState(false);
+  const [triageChatNameById, setTriageChatNameById] = useState<Record<string, string>>({});
   const [modalTargetChatIds, setModalTargetChatIds] = useState<string[]>([]);
   const [googleSyncLoadingByTodoId, setGoogleSyncLoadingByTodoId] = useState<Record<string, boolean>>({});
   const [googleSyncResultByTodoId, setGoogleSyncResultByTodoId] = useState<Record<string, { kind: "ok" | "error"; message: string }>>({});
@@ -1339,10 +1117,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     return m;
   }, [chats]);
 
-  const triageQueue = useMemo(
-    () => buildTriageQueue(suggestionsByChat, chatNameByIdMap),
-    [suggestionsByChat, chatNameByIdMap]
-  );
+  const triageQueue = useMemo(() => {
+    const queue = buildTriageQueue(suggestionsByChat, chatNameByIdMap);
+    if (Object.keys(triageChatNameById).length === 0) return queue;
+    return queue.map((item) => ({
+      ...item,
+      chatName: triageChatNameById[item.chatId] ?? item.chatName,
+    }));
+  }, [suggestionsByChat, chatNameByIdMap, triageChatNameById]);
 
   const setInboxFilter = useCallback((id: TodoInboxFilterId) => {
     setInboxFilterState(id);
@@ -3245,6 +3027,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               onAcceptAllInChat={acceptAllInChat}
               onOpenChat={
                 accountId ? (chatId) => onOpenChat(chatId, accountId) : undefined
+              }
+              onPersistSuggestion={(item, patch) =>
+                updateSuggestion(item.chatId, item.indexInChat, patch)
+              }
+              onChatNameChange={(chatId, chatName) =>
+                setTriageChatNameById((prev) => ({ ...prev, [chatId]: chatName }))
               }
             />
           ) : loadingAllSuggestions && batchSuggestionsFlat.length > 0 ? (

@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  TodoSuggestionInlineEditor,
+  type EditableTodoSuggestion,
+} from "@/components/todo/TodoSuggestionInlineEditor";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
-import { formatDueDateTimeRelative, suggestionDueToDateTime } from "@/lib/due-datetime";
 
 export type TriageQueueItem = {
   chatId: string;
@@ -18,6 +21,8 @@ type TodoSuggestionTriageProps = {
   onAcceptAllInChat: (chatId: string) => void | Promise<void>;
   /** Opens the source chat in a new tab (e.g. /chat). */
   onOpenChat?: (chatId: string) => void;
+  onPersistSuggestion?: (item: TriageQueueItem, patch: Partial<EditableTodoSuggestion>) => void;
+  onChatNameChange?: (chatId: string, chatName: string) => void;
 };
 
 export function buildTriageQueue(
@@ -40,6 +45,8 @@ export function TodoSuggestionTriage({
   onReject,
   onAcceptAllInChat,
   onOpenChat,
+  onPersistSuggestion,
+  onChatNameChange,
 }: TodoSuggestionTriageProps) {
   const [cursor, setCursor] = useState(0);
   const current = items[cursor];
@@ -48,12 +55,6 @@ export function TodoSuggestionTriage({
     if (cursor >= items.length && items.length > 0) setCursor(items.length - 1);
     if (items.length === 0) setCursor(0);
   }, [items.length, cursor]);
-
-  const dueLabel = useMemo(() => {
-    if (!current?.suggestion) return null;
-    const dt = suggestionDueToDateTime(current.suggestion.due);
-    return formatDueDateTimeRelative(dt);
-  }, [current]);
 
   const goNext = useCallback(() => {
     setCursor((c) => Math.min(c + 1, Math.max(0, items.length - 1)));
@@ -106,10 +107,33 @@ export function TodoSuggestionTriage({
         {cursor + 1} / {items.length} · <span className="font-medium text-wa-text-primary">{current.chatName}</span>
       </p>
       <div className="w-full max-w-md rounded-xl border border-wa-border bg-wa-panel-secondary/60 p-5 shadow-sm">
-        <p className="text-base font-semibold text-wa-text-primary">{current.suggestion.title}</p>
-        {dueLabel && <p className="mt-1 text-sm text-wa-text-secondary">Fällig: {dueLabel}</p>}
-        {current.suggestion.notes?.trim() && (
-          <p className="mt-2 line-clamp-4 text-sm text-wa-text-secondary">{current.suggestion.notes.trim()}</p>
+        {onChatNameChange && (
+          <div className="mb-3">
+            <label className="block text-xs text-wa-text-secondary">Chat-Name</label>
+            <input
+              type="text"
+              value={current.chatName}
+              onChange={(e) => onChatNameChange(current.chatId, e.target.value)}
+              className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
+              title="Anzeigename für diesen Chat (wird beim Annehmen übernommen)"
+            />
+          </div>
+        )}
+        {onPersistSuggestion ? (
+          <TodoSuggestionInlineEditor
+            key={`${current.chatId}-${current.indexInChat}`}
+            embedded
+            suggestion={current.suggestion as EditableTodoSuggestion}
+            onPersist={(patch) => onPersistSuggestion(current, patch)}
+            onFinish={() => {}}
+          />
+        ) : (
+          <>
+            <p className="text-base font-semibold text-wa-text-primary">{current.suggestion.title}</p>
+            {current.suggestion.notes?.trim() && (
+              <p className="mt-2 line-clamp-4 text-sm text-wa-text-secondary">{current.suggestion.notes.trim()}</p>
+            )}
+          </>
         )}
       </div>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -148,7 +172,9 @@ export function TodoSuggestionTriage({
           Alle aus Chat (A)
         </button>
       </div>
-      <p className="mt-3 text-[10px] text-wa-text-secondary">J ablehnen · K annehmen · A alle aus diesem Chat</p>
+      <p className="mt-3 text-[10px] text-wa-text-secondary">
+        Titel, Frist &amp; Details direkt in der Karte bearbeiten · J ablehnen · K annehmen · A alle aus diesem Chat
+      </p>
       {cursor < items.length - 1 && (
         <button type="button" onClick={goNext} className="mt-2 text-xs text-wa-text-secondary underline">
           Überspringen ohne Aktion
