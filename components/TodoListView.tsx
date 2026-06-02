@@ -36,6 +36,7 @@ import {
   TodoAnalyzeSettingsDialog,
   type AnalyzeSettingsModalMode,
 } from "@/components/todo/TodoAnalyzeSettingsDialog";
+import { TodoAnalyzeCacheControl } from "@/components/todo/TodoAnalyzeCacheControl";
 import { TodoInboxFilters } from "@/components/todo/TodoInboxFilters";
 import {
   TodoSuggestionTriage,
@@ -807,6 +808,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const patchAnalyzePrefs = useCallback((patch: Partial<SavedTodoAnalyzePrefs>) => {
     setTodoAnalyzePrefs(patch);
   }, []);
+
+  const setAnalyzeCacheForce = useCallback(
+    (force: boolean) => {
+      setAnalyzeForce(force);
+      patchAnalyzePrefs({ analyzeForce: force });
+    },
+    [patchAnalyzePrefs]
+  );
 
   const getAnalyzeSettings = useCallback(
     (): TodoAnalyzeSettingsValues => ({
@@ -2719,6 +2728,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 }
               />
               <TodoInboxFilters value={inboxFilter} onChange={setInboxFilter} />
+              <TodoAnalyzeCacheControl
+                className="mb-2"
+                id="todo-analyze-cache-chats"
+                analyzeForce={analyzeForce}
+                onChange={setAnalyzeCacheForce}
+              />
               <label className="mb-2 block text-xs text-wa-text-secondary">
                 Batch-Scope
                 <select
@@ -3169,7 +3184,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </p>
           )}
           {leftTab !== "dashboard" && selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && !loadingAllSuggestions && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
+              <TodoAnalyzeCacheControl
+                id="todo-analyze-cache-suggestions"
+                analyzeForce={analyzeForce}
+                onChange={setAnalyzeCacheForce}
+              />
               <div className="flex gap-2">
                 <button
                   type="button"
