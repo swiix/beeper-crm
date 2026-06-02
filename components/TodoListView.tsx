@@ -3243,6 +3243,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 );
               }}
               onAcceptAllInChat={acceptAllInChat}
+              onOpenChat={
+                accountId ? (chatId) => onOpenChat(chatId, accountId) : undefined
+              }
             />
           ) : loadingAllSuggestions && batchSuggestionsFlat.length > 0 ? (
             <div>

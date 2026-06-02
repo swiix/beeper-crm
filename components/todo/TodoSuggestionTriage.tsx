@@ -16,6 +16,8 @@ type TodoSuggestionTriageProps = {
   onAccept: (item: TriageQueueItem) => void | Promise<void>;
   onReject: (item: TriageQueueItem) => void;
   onAcceptAllInChat: (chatId: string) => void | Promise<void>;
+  /** Opens the source chat in a new tab (e.g. /chat). */
+  onOpenChat?: (chatId: string) => void;
 };
 
 export function buildTriageQueue(
@@ -37,6 +39,7 @@ export function TodoSuggestionTriage({
   onAccept,
   onReject,
   onAcceptAllInChat,
+  onOpenChat,
 }: TodoSuggestionTriageProps) {
   const [cursor, setCursor] = useState(0);
   const current = items[cursor];
@@ -110,6 +113,16 @@ export function TodoSuggestionTriage({
         )}
       </div>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
+        {onOpenChat && (
+          <button
+            type="button"
+            onClick={() => onOpenChat(current.chatId)}
+            title="Chat in neuem Tab öffnen"
+            className="rounded-lg border border-wa-border bg-wa-panel px-4 py-2 text-sm font-medium text-wa-text-primary hover:bg-wa-panel-secondary"
+          >
+            Chat öffnen
+          </button>
+        )}
         <button
           type="button"
           onClick={handleReject}
