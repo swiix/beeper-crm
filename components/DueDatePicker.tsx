@@ -30,36 +30,54 @@ export type DueDatePickerProps = {
 
 type QuickPick = { label: string; apply: (ctx: { today: string; from: string }) => DueDateTime };
 
-function buildQuickPicks(): QuickPick[] {
+type QuickPickGroup = { title: string; picks: QuickPick[] };
+
+function buildQuickPickGroups(): QuickPickGroup[] {
   return [
-    { label: "Heute", apply: ({ today }) => ({ date: today, time: DEFAULT_DUE_TIME }) },
-    { label: "Morgen", apply: ({ today }) => ({ date: addLocalDays(today, 1), time: DEFAULT_DUE_TIME }) },
-    { label: "Übermorgen", apply: ({ today }) => ({ date: addLocalDays(today, 2), time: DEFAULT_DUE_TIME }) },
     {
-      label: "Werktag",
-      apply: ({ from }) => ({ date: nextWorkdayYmd(from), time: DEFAULT_DUE_TIME }),
+      title: "Schnell",
+      picks: [
+        { label: "Heute", apply: ({ today }) => ({ date: today, time: DEFAULT_DUE_TIME }) },
+        { label: "Morgen", apply: ({ today }) => ({ date: addLocalDays(today, 1), time: DEFAULT_DUE_TIME }) },
+        { label: "Übermorgen", apply: ({ today }) => ({ date: addLocalDays(today, 2), time: DEFAULT_DUE_TIME }) },
+        {
+          label: "Werktag",
+          apply: ({ from }) => ({ date: nextWorkdayYmd(from), time: DEFAULT_DUE_TIME }),
+        },
+        {
+          label: "Nächster Mo",
+          apply: ({ from }) => ({ date: nextWeekdayYmd(from, 0), time: DEFAULT_DUE_TIME }),
+        },
+        {
+          label: "Nächster Fr",
+          apply: ({ from }) => ({ date: nextWeekdayYmd(from, 4), time: DEFAULT_DUE_TIME }),
+        },
+        {
+          label: "Nächste Woche",
+          apply: ({ today }) => ({
+            date: nextWeekdayYmd(addLocalDays(today, 1), 0),
+            time: DEFAULT_DUE_TIME,
+          }),
+        },
+      ],
     },
     {
-      label: "Nächster Mo",
-      apply: ({ from }) => ({ date: nextWeekdayYmd(from, 0), time: DEFAULT_DUE_TIME }),
+      title: "Verschieben",
+      picks: [
+        { label: "+1 Tag", apply: ({ from }) => ({ date: addLocalDays(from, 1), time: DEFAULT_DUE_TIME }) },
+        { label: "+2 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 2), time: DEFAULT_DUE_TIME }) },
+        { label: "+3 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 3), time: DEFAULT_DUE_TIME }) },
+        { label: "+7 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 7), time: DEFAULT_DUE_TIME }) },
+        { label: "+14 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 14), time: DEFAULT_DUE_TIME }) },
+        { label: "+1 Mo.", apply: ({ from }) => ({ date: addLocalMonths(from, 1), time: DEFAULT_DUE_TIME }) },
+        { label: "+3 Mo.", apply: ({ from }) => ({ date: addLocalMonths(from, 3), time: DEFAULT_DUE_TIME }) },
+      ],
     },
-    {
-      label: "Nächster Fr",
-      apply: ({ from }) => ({ date: nextWeekdayYmd(from, 4), time: DEFAULT_DUE_TIME }),
-    },
-    {
-      label: "Nächste Woche",
-      apply: ({ today }) => ({ date: nextWeekdayYmd(addLocalDays(today, 1), 0), time: DEFAULT_DUE_TIME }),
-    },
-    { label: "+1 Tag", apply: ({ from }) => ({ date: addLocalDays(from, 1), time: DEFAULT_DUE_TIME }) },
-    { label: "+2 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 2), time: DEFAULT_DUE_TIME }) },
-    { label: "+3 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 3), time: DEFAULT_DUE_TIME }) },
-    { label: "+7 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 7), time: DEFAULT_DUE_TIME }) },
-    { label: "+14 Tage", apply: ({ from }) => ({ date: addLocalDays(from, 14), time: DEFAULT_DUE_TIME }) },
-    { label: "+1 Mo.", apply: ({ from }) => ({ date: addLocalMonths(from, 1), time: DEFAULT_DUE_TIME }) },
-    { label: "+3 Mo.", apply: ({ from }) => ({ date: addLocalMonths(from, 3), time: DEFAULT_DUE_TIME }) },
   ];
 }
+
+const PICKER_CHIP_CLASS =
+  "rounded-full border border-wa-border bg-wa-panel-secondary px-2 py-0.5 text-[11px] font-medium text-wa-text-primary transition hover:border-wa-green/40 hover:bg-wa-green/10 active:scale-[0.98]";
 
 const TIME_PRESETS = ["20:00", "12:00", "17:00"] as const;
 
@@ -84,7 +102,7 @@ export function DueDatePicker({
   const [viewYear, setViewYear] = useState(parsed.year);
   const [viewMonth, setViewMonth] = useState(parsed.month);
 
-  const quickPicks = useMemo(() => buildQuickPicks(), []);
+  const quickPickGroups = useMemo(() => buildQuickPickGroups(), []);
   const grid = useMemo(() => buildCalendarMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
   useEffect(() => {
@@ -102,12 +120,12 @@ export function DueDatePicker({
     const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const width = 300;
+    const width = 320;
     let left = rect.left;
     if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;
     if (left < 8) left = 8;
     let top = rect.bottom + 4;
-    const maxH = 420;
+    const maxH = 520;
     if (top + maxH > window.innerHeight - 8) top = Math.max(8, rect.top - maxH - 4);
     setPanelPos({ top, left });
   }, []);
@@ -188,23 +206,32 @@ export function DueDatePicker({
         ref={panelRef}
         role="dialog"
         aria-label="Frist wählen"
-        className="z-[200] w-[300px] rounded-lg border border-wa-border bg-wa-panel p-3 shadow-xl"
+        className="z-[200] w-[min(320px,calc(100vw-16px))] rounded-xl border border-wa-border bg-wa-panel p-3 shadow-xl"
         style={{ position: "fixed", top: panelPos.top, left: panelPos.left }}
       >
-        <div className="flex max-h-[88px] flex-wrap gap-1 overflow-y-auto">
-          {quickPicks.map((pick) => (
-            <button
-              key={pick.label}
-              type="button"
-              onClick={() => {
-                const next = pick.apply({ today, from: anchorYmd });
-                if (commitOnSelect) applyAndMaybeClose(next);
-                else setDraft(next);
-              }}
-              className="rounded border border-wa-border bg-wa-panel-secondary px-1.5 py-0.5 text-[11px] text-wa-text-primary hover:bg-wa-panel"
-            >
-              {pick.label}
-            </button>
+        <div className="space-y-2.5">
+          {quickPickGroups.map((group) => (
+            <div key={group.title}>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-wa-text-secondary">
+                {group.title}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {group.picks.map((pick) => (
+                  <button
+                    key={pick.label}
+                    type="button"
+                    onClick={() => {
+                      const next = pick.apply({ today, from: anchorYmd });
+                      if (commitOnSelect) applyAndMaybeClose(next);
+                      else setDraft(next);
+                    }}
+                    className={PICKER_CHIP_CLASS}
+                  >
+                    {pick.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -285,12 +312,7 @@ export function DueDatePicker({
               className="rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
             />
             {TIME_PRESETS.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTimePart(t)}
-                className="rounded border border-wa-border bg-wa-panel-secondary px-1.5 py-0.5 text-[11px] hover:bg-wa-panel"
-              >
+              <button key={t} type="button" onClick={() => setTimePart(t)} className={PICKER_CHIP_CLASS}>
                 {t}
               </button>
             ))}
@@ -301,7 +323,7 @@ export function DueDatePicker({
                 const hm = `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
                 setTimePart(hm);
               }}
-              className="rounded border border-wa-border bg-wa-panel-secondary px-1.5 py-0.5 text-[11px] hover:bg-wa-panel"
+              className={PICKER_CHIP_CLASS}
             >
               Jetzt
             </button>
