@@ -28,6 +28,48 @@ type TodoSuggestionTriageCardProps = {
   onChatNameChange?: (chatId: string, chatName: string) => void;
 };
 
+const DURATION_QUICK_PICKS = [
+  { label: "15 Min", hours: 0.25 },
+  { label: "30 Min", hours: 0.5 },
+  { label: "1 h", hours: 1 },
+  { label: "1,5 h", hours: 1.5 },
+  { label: "2 h", hours: 2 },
+] as const;
+
+function DurationQuickBadges({
+  activeHours,
+  onPick,
+}: {
+  activeHours: number | null;
+  onPick: (hours: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Schnellauswahl Dauer">
+      {DURATION_QUICK_PICKS.map((pick) => {
+        const isActive = activeHours != null && Math.abs(activeHours - pick.hours) < 0.01;
+        return (
+          <button
+            key={pick.label}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPick(pick.hours);
+            }}
+            className={[
+              "rounded-full border px-2.5 py-1 text-[11px] font-medium transition",
+              isActive
+                ? "border-wa-green bg-wa-green/15 text-wa-green"
+                : "border-wa-border bg-wa-panel-secondary text-wa-text-primary hover:border-wa-green/40 hover:bg-wa-green/10",
+            ].join(" ")}
+          >
+            {pick.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function formatEstimatedHours(suggestion: EditableTodoSuggestion): string | null {
   if (suggestion.estimated_time_hours != null) return `${suggestion.estimated_time_hours} h`;
   if (suggestion.estimated_time_minutes != null && suggestion.estimated_time_minutes > 0) {
@@ -44,6 +86,7 @@ function TriageFieldShell({
   onActivate,
   children,
   hint,
+  footer,
 }: {
   label: string;
   icon: string;
@@ -51,6 +94,8 @@ function TriageFieldShell({
   onActivate: () => void;
   children: ReactNode;
   hint?: string;
+  /** Rendered below the tap target (e.g. quick-pick chips). */
+  footer?: ReactNode;
 }) {
   if (active) {
     return (
@@ -66,22 +111,25 @@ function TriageFieldShell({
   }
 
   return (
-    <button
-      type="button"
-      onClick={onActivate}
-      className="group w-full rounded-xl border border-transparent px-3 py-2.5 text-left transition hover:border-wa-border/80 hover:bg-wa-panel/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-wa-green/40"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-wa-text-secondary group-hover:text-wa-text-primary">
-          <span aria-hidden>{icon}</span>
-          {label}
-        </span>
-        <span className="text-[10px] text-wa-text-secondary opacity-0 transition group-hover:opacity-100">
-          Bearbeiten
-        </span>
-      </div>
-      <div className="mt-1">{children}</div>
-    </button>
+    <div className="overflow-hidden rounded-xl border border-transparent transition hover:border-wa-border/80 hover:bg-wa-panel/50">
+      <button
+        type="button"
+        onClick={onActivate}
+        className="group w-full px-3 py-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-wa-green/40"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-wa-text-secondary group-hover:text-wa-text-primary">
+            <span aria-hidden>{icon}</span>
+            {label}
+          </span>
+          <span className="text-[10px] text-wa-text-secondary opacity-0 transition group-hover:opacity-100">
+            Bearbeiten
+          </span>
+        </div>
+        <div className="mt-1">{children}</div>
+      </button>
+      {footer && <div className="border-t border-wa-border/50 px-3 pb-2.5 pt-2">{footer}</div>}
+    </div>
   );
 }
 
@@ -158,6 +206,25 @@ export function TodoSuggestionTriageCard({
     const v = chatDraft.trim();
     if (v && v !== item.chatName) onChatNameChange?.(item.chatId, v);
   }, [chatDraft, item, onChatNameChange]);
+
+  const applyDurationHours = useCallback(
+    (hours: number) => {
+      const roundedHours = Number(hours.toFixed(2));
+      const minutes = Math.round(roundedHours * 60);
+      setHoursDraft(String(roundedHours));
+      onPersistSuggestion?.(item, {
+        estimated_time_minutes: minutes,
+        estimated_time_hours: roundedHours,
+      });
+    },
+    [item, onPersistSuggestion]
+  );
+
+  const activeDurationHours =
+    suggestion.estimated_time_hours ??
+    (suggestion.estimated_time_minutes != null
+      ? Number((suggestion.estimated_time_minutes / 60).toFixed(2))
+      : null);
 
   const flushDuration = useCallback(() => {
     const raw = hoursDraft.trim();
@@ -377,27 +444,35 @@ export function TodoSuggestionTriageCard({
             icon="⏱"
             active={editingField === "duration"}
             onActivate={() => activate("duration")}
+            footer={
+              editingField !== "duration" && canEdit ? (
+                <DurationQuickBadges activeHours={activeDurationHours} onPick={applyDurationHours} />
+              ) : undefined
+            }
           >
             {editingField === "duration" ? (
-              <div className="flex items-center gap-2">
-                <input
-                  ref={durationRef}
-                  type="number"
-                  min={0}
-                  step={0.25}
-                  value={hoursDraft}
-                  onChange={(e) => setHoursDraft(e.target.value)}
-                  onBlur={flushDuration}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      flushDuration();
-                      closeField();
-                    }
-                  }}
-                  className="w-24 rounded-lg border border-wa-border bg-wa-input-bg px-2.5 py-2 text-sm text-wa-text-primary focus:border-wa-green focus:outline-none"
-                />
-                <span className="text-xs text-wa-text-secondary">Stunden</span>
+              <div className="space-y-2">
+                <DurationQuickBadges activeHours={activeDurationHours} onPick={applyDurationHours} />
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={durationRef}
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    value={hoursDraft}
+                    onChange={(e) => setHoursDraft(e.target.value)}
+                    onBlur={flushDuration}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        flushDuration();
+                        closeField();
+                      }
+                    }}
+                    className="w-24 rounded-lg border border-wa-border bg-wa-input-bg px-2.5 py-2 text-sm text-wa-text-primary focus:border-wa-green focus:outline-none"
+                  />
+                  <span className="text-xs text-wa-text-secondary">Stunden</span>
+                </div>
               </div>
             ) : durationLabel ? (
               <p className="text-sm text-wa-text-primary">{durationLabel}</p>
