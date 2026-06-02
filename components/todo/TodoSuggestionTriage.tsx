@@ -1,18 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { EditableTodoSuggestion } from "@/components/todo/TodoSuggestionInlineEditor";
 import {
-  TodoSuggestionInlineEditor,
-  type EditableTodoSuggestion,
-} from "@/components/todo/TodoSuggestionInlineEditor";
+  TodoSuggestionTriageCard,
+  type TriageEditField,
+  type TriageQueueItem,
+} from "@/components/todo/TodoSuggestionTriageCard";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
 
-export type TriageQueueItem = {
-  chatId: string;
-  chatName: string;
-  suggestion: TodoSuggestionItem;
-  indexInChat: number;
-};
+export type { TriageQueueItem };
 
 type TodoSuggestionTriageProps = {
   items: TriageQueueItem[];
@@ -49,6 +46,7 @@ export function TodoSuggestionTriage({
   onChatNameChange,
 }: TodoSuggestionTriageProps) {
   const [cursor, setCursor] = useState(0);
+  const [editingField, setEditingField] = useState<TriageEditField | null>(null);
   const current = items[cursor];
 
   useEffect(() => {
@@ -56,24 +54,28 @@ export function TodoSuggestionTriage({
     if (items.length === 0) setCursor(0);
   }, [items.length, cursor]);
 
+  const progressPct = items.length > 0 ? Math.round(((cursor + 1) / items.length) * 100) : 0;
+
   const goNext = useCallback(() => {
+    setEditingField(null);
     setCursor((c) => Math.min(c + 1, Math.max(0, items.length - 1)));
   }, [items.length]);
 
   const handleReject = useCallback(() => {
-    if (!current) return;
+    if (!current || editingField) return;
     onReject(current);
     if (cursor >= items.length - 1 && cursor > 0) setCursor((c) => c - 1);
-  }, [current, cursor, items.length, onReject]);
+  }, [current, cursor, items.length, onReject, editingField]);
 
   const handleAccept = useCallback(async () => {
-    if (!current) return;
+    if (!current || editingField) return;
     await onAccept(current);
     if (cursor >= items.length - 1 && cursor > 0) setCursor((c) => c - 1);
-  }, [current, cursor, items.length, onAccept]);
+  }, [current, cursor, items.length, onAccept, editingField]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (editingField) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const k = e.key.toLowerCase();
       if (k === "j" || k === "arrowleft") {
@@ -89,7 +91,7 @@ export function TodoSuggestionTriage({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, handleAccept, handleReject, onAcceptAllInChat]);
+  }, [current, handleAccept, handleReject, onAcceptAllInChat, editingField]);
 
   if (items.length === 0) {
     return (
@@ -102,47 +104,45 @@ export function TodoSuggestionTriage({
   if (!current) return null;
 
   return (
-    <div className="flex flex-col items-center py-4">
-      <p className="mb-3 text-xs text-wa-text-secondary">
-        {cursor + 1} / {items.length} · <span className="font-medium text-wa-text-primary">{current.chatName}</span>
-      </p>
-      <div className="w-full max-w-md rounded-xl border border-wa-border bg-wa-panel-secondary/60 p-5 shadow-sm">
-        {onChatNameChange && (
-          <div className="mb-3">
-            <label className="block text-xs text-wa-text-secondary">Chat-Name</label>
-            <input
-              type="text"
-              value={current.chatName}
-              onChange={(e) => onChatNameChange(current.chatId, e.target.value)}
-              className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
-              title="Anzeigename für diesen Chat (wird beim Annehmen übernommen)"
-            />
-          </div>
-        )}
-        {onPersistSuggestion ? (
-          <TodoSuggestionInlineEditor
-            key={`${current.chatId}-${current.indexInChat}`}
-            embedded
-            suggestion={current.suggestion as EditableTodoSuggestion}
-            onPersist={(patch) => onPersistSuggestion(current, patch)}
-            onFinish={() => {}}
+    <div className="flex flex-col items-center px-2 py-4">
+      <div className="mb-4 w-full max-w-md">
+        <div className="mb-1.5 flex items-center justify-between text-xs text-wa-text-secondary">
+          <span>
+            Vorschlag <span className="font-medium text-wa-text-primary">{cursor + 1}</span> von{" "}
+            {items.length}
+          </span>
+          <span className="tabular-nums text-wa-green">{progressPct}%</span>
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-wa-border/60">
+          <div
+            className="h-full rounded-full bg-wa-green transition-[width] duration-300 ease-out"
+            style={{ width: `${progressPct}%` }}
           />
-        ) : (
-          <>
-            <p className="text-base font-semibold text-wa-text-primary">{current.suggestion.title}</p>
-            {current.suggestion.notes?.trim() && (
-              <p className="mt-2 line-clamp-4 text-sm text-wa-text-secondary">{current.suggestion.notes.trim()}</p>
-            )}
-          </>
-        )}
+        </div>
       </div>
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
+
+      {onPersistSuggestion ? (
+        <TodoSuggestionTriageCard
+          item={current}
+          editingField={editingField}
+          onEditingFieldChange={setEditingField}
+          onPersistSuggestion={onPersistSuggestion}
+          onChatNameChange={onChatNameChange}
+        />
+      ) : (
+        <div className="w-full max-w-md rounded-2xl border border-wa-border bg-wa-panel-secondary/60 p-5">
+          <p className="text-base font-semibold text-wa-text-primary">{current.suggestion.title}</p>
+        </div>
+      )}
+
+      <div className="mt-5 flex w-full max-w-md flex-wrap justify-center gap-2">
         {onOpenChat && (
           <button
             type="button"
             onClick={() => onOpenChat(current.chatId)}
+            disabled={Boolean(editingField)}
             title="Chat in neuem Tab öffnen"
-            className="rounded-lg border border-wa-border bg-wa-panel px-4 py-2 text-sm font-medium text-wa-text-primary hover:bg-wa-panel-secondary"
+            className="rounded-xl border border-wa-border bg-wa-panel px-4 py-2.5 text-sm font-medium text-wa-text-primary transition hover:bg-wa-panel-secondary disabled:opacity-40"
           >
             Chat öffnen
           </button>
@@ -150,33 +150,49 @@ export function TodoSuggestionTriage({
         <button
           type="button"
           onClick={handleReject}
+          disabled={Boolean(editingField)}
           title="Ablehnen (J / ←)"
-          className="rounded-lg border border-red-400/50 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300"
+          className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-500/15 disabled:opacity-40 dark:text-red-300"
         >
-          Ablehnen (J)
+          Ablehnen
+          <span className="ml-1.5 hidden text-xs opacity-70 sm:inline">J</span>
         </button>
         <button
           type="button"
           onClick={() => void handleAccept()}
+          disabled={Boolean(editingField)}
           title="Annehmen (K / →)"
-          className="rounded-lg bg-wa-green px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          className="rounded-xl bg-wa-green px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 disabled:opacity-40"
         >
-          Annehmen (K)
+          Annehmen
+          <span className="ml-1.5 hidden text-xs opacity-80 sm:inline">K</span>
         </button>
         <button
           type="button"
           onClick={() => void onAcceptAllInChat(current.chatId)}
+          disabled={Boolean(editingField)}
           title="Alle Vorschläge dieses Chats annehmen (A)"
-          className="rounded-lg border border-wa-border bg-wa-panel-secondary px-3 py-2 text-xs font-medium text-wa-text-primary"
+          className="rounded-xl border border-wa-border bg-wa-panel-secondary/80 px-3 py-2.5 text-xs font-medium text-wa-text-primary transition hover:bg-wa-panel disabled:opacity-40"
         >
-          Alle aus Chat (A)
+          Alle aus Chat
+          <span className="ml-1 opacity-70">A</span>
         </button>
       </div>
-      <p className="mt-3 text-[10px] text-wa-text-secondary">
-        Titel, Frist &amp; Details direkt in der Karte bearbeiten · J ablehnen · K annehmen · A alle aus diesem Chat
+
+      <p className="mt-4 max-w-md text-center text-[11px] leading-relaxed text-wa-text-secondary">
+        {editingField ? (
+          <>Feld bearbeiten · Esc speichern &amp; schließen · Shortcuts pausiert</>
+        ) : (
+          <>Auf Chat, Titel, Frist oder Details tippen zum Bearbeiten · J ablehnen · K annehmen</>
+        )}
       </p>
-      {cursor < items.length - 1 && (
-        <button type="button" onClick={goNext} className="mt-2 text-xs text-wa-text-secondary underline">
+
+      {cursor < items.length - 1 && !editingField && (
+        <button
+          type="button"
+          onClick={goNext}
+          className="mt-2 text-xs text-wa-text-secondary underline-offset-2 hover:text-wa-text-primary hover:underline"
+        >
           Überspringen ohne Aktion
         </button>
       )}
