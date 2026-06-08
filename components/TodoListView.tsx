@@ -336,6 +336,10 @@ const IGNORED_CHATS_STORAGE_KEY = "beeper-crm:todo-ignored-chats";
 const LEGACY_TODO_SUGGESTIONS_SESSION_KEY = "beeper-crm:todo-suggestions";
 const ALL_CHATS_SENTINEL = "__all__";
 
+function formatChatCountLabel(count: number): string {
+  return count === 1 ? "1 Chat" : `${count} Chats`;
+}
+
 const TODO_SUGGESTIONS_VIEW_STORAGE_KEY = "beeper-crm:todo-suggestions-view";
 const LAST_CHAT_STORAGE_KEY = "beeper-crm:todo-last-chat";
 const META_FETCH_CHUNK = 200;
@@ -2597,7 +2601,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                       title="Ausgewählte Chats analysieren (Shift+Klick: Einstellungen)"
                       className="flex-1 rounded-lg bg-wa-green px-2 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
                     >
-                      {loadingAllSuggestions && loadingAllProgress ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total}…` : "Auswahl analysieren"}
+                      {loadingAllSuggestions && loadingAllProgress
+                        ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
+                        : "Auswahl analysieren"}
                     </button>
                     {loadingAllSuggestions && (
                       <button
@@ -2617,12 +2623,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   type="button"
                   onClick={(e) => handleBatchAnalyzeClick(e, "all")}
                   disabled={loadingAllSuggestions || batchTargetChats.length === 0}
-                  title="Batch starten (Shift+Klick: Einstellungen, letztes Preset)"
+                  title={`Todo-Vorschläge für ${formatChatCountLabel(batchTargetChats.length)} laden (${TODO_BATCH_SCOPE_LABELS[batchScope]}). Shift+Klick: Einstellungen.`}
                   className="w-full rounded-lg border border-wa-border bg-wa-panel-secondary px-2 py-1.5 text-xs font-medium text-wa-text-primary hover:bg-wa-panel disabled:opacity-50"
                 >
                   {loadingAllSuggestions && loadingAllProgress
-                    ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats`
-                    : `Vorschläge laden (${batchTargetChats.length})`}
+                    ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
+                    : `Vorschläge für ${formatChatCountLabel(batchTargetChats.length)} laden`}
                 </button>
                 <button
                   type="button"
@@ -2631,10 +2637,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     openAnalyzeSettingsModal("one-prompt", { targetChatIds: batchTargetChatIds });
                   }}
                   disabled={loadingAllSuggestions || batchTargetChats.length === 0}
-                  title="One-Prompt Batch (Shift+Klick: mit Preset-Dialog)"
+                  title={`One-Prompt für ${formatChatCountLabel(batchTargetChats.length)} (${TODO_BATCH_SCOPE_LABELS[batchScope]})`}
                   className="mt-1.5 w-full rounded-lg border border-blue-400/40 bg-blue-500/10 px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-500/20 disabled:opacity-50 dark:text-blue-300"
                 >
-                  One-Prompt auf alle sichtbaren Chats
+                  One-Prompt für {formatChatCountLabel(batchTargetChats.length)}
                 </button>
                 {loadingAllSuggestions && loadingAllProgress && (
                   <>
