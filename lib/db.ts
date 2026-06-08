@@ -51,6 +51,11 @@ function initSchema(database: Database.Database): void {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS todo_pinned_chats (
+      chat_id TEXT NOT NULL PRIMARY KEY,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS todo_lists (
       id TEXT NOT NULL PRIMARY KEY,
       name TEXT NOT NULL,

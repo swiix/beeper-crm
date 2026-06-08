@@ -8,6 +8,8 @@ import {
   type TriageQueueItem,
 } from "@/components/todo/TodoSuggestionTriageCard";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
+import { sortTodoChatIds } from "@/lib/todo-chat-sort";
+import type { BeeperChat } from "@/lib/types";
 
 export type { TriageQueueItem };
 
@@ -23,10 +25,16 @@ type TodoSuggestionTriageProps = {
 
 export function buildTriageQueue(
   suggestionsByChat: Record<string, TodoSuggestionItem[]>,
-  chatNameById: Map<string, string>
+  chatNameById: Map<string, string>,
+  localPinnedChatIds: string[] = [],
+  chatsById: Map<string, BeeperChat> = new Map()
 ): TriageQueueItem[] {
+  const chatIds = Object.keys(suggestionsByChat).filter((chatId) => (suggestionsByChat[chatId]?.length ?? 0) > 0);
+  const sortedChatIds = sortTodoChatIds(chatIds, chatsById, localPinnedChatIds);
+
   const out: TriageQueueItem[] = [];
-  for (const [chatId, list] of Object.entries(suggestionsByChat)) {
+  for (const chatId of sortedChatIds) {
+    const list = suggestionsByChat[chatId] ?? [];
     const chatName = chatNameById.get(chatId) ?? chatId.slice(0, 8);
     list.forEach((suggestion, indexInChat) => {
       out.push({ chatId, chatName, suggestion, indexInChat });

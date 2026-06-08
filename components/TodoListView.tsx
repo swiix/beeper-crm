@@ -66,6 +66,7 @@ import {
   type TodoChatInboxStatus,
   type TodoInboxFilterId,
 } from "@/lib/todo-chat-inbox-status";
+import { isTodoChatPinned, sortTodoChatIds, sortTodoChatsForDisplay } from "@/lib/todo-chat-sort";
 import type { TodoSuggestionMeta } from "@/lib/todo-db";
 import {
   getTodoInboxFilter,
@@ -418,6 +419,33 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     { revalidateOnFocus: true }
   );
   const ignoredChatIds = ignoredChatsData?.chatIds ?? [];
+
+  const { data: pinnedChatsData, mutate: mutatePinnedChats } = useSWR<{ chatIds: string[] }>(
+    "todo-pinned-chats",
+    () => fetch("/api/settings/todo-pinned-chats").then((r) => r.json()),
+    { revalidateOnFocus: true }
+  );
+  const pinnedChatIds = pinnedChatsData?.chatIds ?? [];
+
+  const togglePinnedChat = useCallback(
+    (chatId: string, pin: boolean) => {
+      void mutatePinnedChats(async (current) => {
+        try {
+          const res = await fetch("/api/settings/todo-pinned-chats", {
+            method: pin ? "POST" : "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatId }),
+          });
+          if (!res.ok) return current;
+          const data = (await res.json()) as { chatIds?: string[] };
+          return { chatIds: data.chatIds ?? current?.chatIds ?? [] };
+        } catch {
+          return current;
+        }
+      }, false);
+    },
+    [mutatePinnedChats]
+  );
 
   const updateIgnoredChatIds = useCallback(
     (updater: (prev: string[]) => string[]) => {
@@ -1035,14 +1063,19 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     return list.filter((c) => chatMatchesSearchQuery(c, q, { searchPhones: isWhatsAppAccount }));
   }, [chats, chatListView, chatSearchQuery, isWhatsAppAccount]);
 
+  const sortedChatsForList = useMemo(
+    () => sortTodoChatsForDisplay(filteredChatsForList, pinnedChatIds),
+    [filteredChatsForList, pinnedChatIds]
+  );
+
   const chatsAvailableForAnalysis = useMemo(
-    () => filteredChatsForList.filter((c) => !ignoredChatIds.includes(c.id)),
-    [filteredChatsForList, ignoredChatIds]
+    () => sortedChatsForList.filter((c) => !ignoredChatIds.includes(c.id)),
+    [sortedChatsForList, ignoredChatIds]
   );
 
   const visibleChatIds = useMemo(
-    () => filteredChatsForList.map((c) => c.id).filter(Boolean) as string[],
-    [filteredChatsForList]
+    () => sortedChatsForList.map((c) => c.id).filter(Boolean) as string[],
+    [sortedChatsForList]
   );
 
   const { data: suggestionsMeta = {} } = useSWR<Record<string, TodoSuggestionMeta>>(
@@ -1081,12 +1114,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   }, [filteredChatsForList, suggestionsByChat, suggestionsMeta, ignoredChatIds]);
 
   const inboxFilteredChats = useMemo(() => {
-    return filteredChatsForList.filter((c) => {
+    return sortedChatsForList.filter((c) => {
       if (!c.id) return false;
       const status = chatInboxStatusById[c.id] ?? "never";
       return chatMatchesInboxFilter(status, inboxFilter);
     });
-  }, [filteredChatsForList, chatInboxStatusById, inboxFilter]);
+  }, [sortedChatsForList, chatInboxStatusById, inboxFilter]);
 
   const batchTargetChats = useMemo(() => {
     const base = chatsAvailableForAnalysis;
@@ -1118,13 +1151,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   }, [chats]);
 
   const triageQueue = useMemo(() => {
-    const queue = buildTriageQueue(suggestionsByChat, chatNameByIdMap);
+    const chatsById = new Map(chats.map((c) => [c.id, c]));
+    const queue = buildTriageQueue(suggestionsByChat, chatNameByIdMap, pinnedChatIds, chatsById);
     if (Object.keys(triageChatNameById).length === 0) return queue;
     return queue.map((item) => ({
       ...item,
       chatName: triageChatNameById[item.chatId] ?? item.chatName,
     }));
-  }, [suggestionsByChat, chatNameByIdMap, triageChatNameById]);
+  }, [suggestionsByChat, chatNameByIdMap, triageChatNameById, pinnedChatIds, chats]);
 
   const setInboxFilter = useCallback((id: TodoInboxFilterId) => {
     setInboxFilterState(id);
@@ -1638,7 +1672,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     const settings = settingsOverride ?? getAnalyzeSettings();
     const analyzeFields = buildAnalyzeRequestFields(settings);
     const baseIds = selectedChatIds.length > 0 ? selectedChatIds : (selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? [selectedChatId] : []);
-    const ids = baseIds.filter((id) => !ignoredChatIds.includes(id));
+    const chatById = new Map(chats.map((c) => [c.id, c]));
+    const ids = sortTodoChatIds(
+      baseIds.filter((id) => !ignoredChatIds.includes(id)),
+      chatById,
+      pinnedChatIds
+    );
     if (ids.length === 0 || !accountId) return;
     setSuggestionsByChat({});
     setBatchSuggestionChatOrder([]);
@@ -1766,7 +1805,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         setLoadingAllError(msg);
       }
     }
-  }, [selectedChatIds, selectedChatId, accountId, chatsAvailableForAnalysis, ignoredChatIds, getAnalyzeSettings]);
+  }, [selectedChatIds, selectedChatId, accountId, chatsAvailableForAnalysis, chats, ignoredChatIds, pinnedChatIds, getAnalyzeSettings]);
 
   const cancelAnalyzeBatch = useCallback(() => {
     if (analyzeBatchAbortRef.current) {
@@ -2648,7 +2687,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   {Object.values(suggestionsByChat).reduce((acc, list) => acc + list.length, 0)}
                 </span>
               </button>
-              {filteredChatsForList.map((chat, index) => {
+              {sortedChatsForList.map((chat, index) => {
             const id = chat.id;
             const name = (chat.name ?? chat.participants?.[0]?.name ?? id?.slice(0, 8) ?? "Chat") as string;
             const count = countByChat[id] ?? 0;
@@ -2656,6 +2695,8 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             const inSelection = selectedChatIds.length > 0 && selectedChatIds.includes(id);
             const suggestionCount = suggestionsByChat[id]?.length ?? 0;
             const ignoredForAnalysis = ignoredChatIds.includes(id);
+            const pinnedForAnalysis = isTodoChatPinned(chat, pinnedChatIds);
+            const locallyPinned = pinnedChatIds.includes(id);
             const inboxStatus = id ? chatInboxStatusById[id] : undefined;
             return (
               <button
@@ -2671,7 +2712,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     const anchor = lastClickedIndexRef.current ?? index;
                     const low = Math.min(anchor, index);
                     const high = Math.max(anchor, index);
-                    const ids = filteredChatsForList.slice(low, high + 1).map((c) => c.id).filter(Boolean);
+                    const ids = sortedChatsForList.slice(low, high + 1).map((c) => c.id).filter(Boolean);
                     setSelectedChatIds(ids);
                     setSelectedChatId(id);
                     lastClickedIndexRef.current = index;
@@ -2707,6 +2748,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 }`}
               >
                 <span className="truncate">
+                  {pinnedForAnalysis ? (
+                    <span className="mr-1" title={locallyPinned ? "Angepinnt" : "In Beeper angepinnt"}>
+                      📌
+                    </span>
+                  ) : null}
                   {name}
                   {ignoredForAnalysis ? (
                     <span className="ml-1 inline-flex rounded bg-amber-500/15 px-1 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Für Todo-Analyse ignoriert">
@@ -2747,6 +2793,17 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             style={{ left: chatContextMenu.x, top: chatContextMenu.y }}
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              type="button"
+              onClick={() => {
+                const id = chatContextMenu.chatId;
+                togglePinnedChat(id, !pinnedChatIds.includes(id));
+                setChatContextMenu(null);
+              }}
+              className="w-full rounded px-2 py-1.5 text-left text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
+            >
+              {pinnedChatIds.includes(chatContextMenu.chatId) ? "Pin entfernen" : "Anpinnen"}
+            </button>
             <button
               type="button"
               onClick={() => {

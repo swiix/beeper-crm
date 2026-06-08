@@ -21,8 +21,8 @@ export interface BeeperChat {
   participants?: Array<{ id?: string; name?: string; handle?: string; avatar?: string }>;
   lastMessage?: { text?: string; timestamp?: string; senderName?: string; isSender?: boolean };
   lastActivity?: string;
-  /** From Beeper API: chat is archived (hidden from main list when showArchived is off). */
-  isArchived?: boolean;
+  /** From Beeper API: chat is pinned in Beeper. */
+  isPinned?: boolean;
   [key: string]: unknown;
 }
 
