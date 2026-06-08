@@ -23,6 +23,8 @@ export interface BeeperChat {
   lastActivity?: string;
   /** From Beeper API: chat is pinned in Beeper. */
   isPinned?: boolean;
+  /** From Beeper API: chat is archived. */
+  isArchived?: boolean;
   [key: string]: unknown;
 }
 

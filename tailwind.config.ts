@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: ["selector", '[data-theme="dark"]'],
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,6 +10,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        tg: {
+          surface: "rgb(var(--tg-surface) / <alpha-value>)",
+          "surface-elevated": "rgb(var(--tg-surface-elevated) / <alpha-value>)",
+          border: "rgb(var(--tg-border) / <alpha-value>)",
+          "bg-base": "rgb(var(--tg-bg-base) / <alpha-value>)",
+          "bg-accent": "rgb(var(--tg-bg-accent) / <alpha-value>)",
+        },
         wa: {
           green: "rgb(var(--wa-green) / <alpha-value>)",
           "green-dark": "rgb(var(--wa-green-dark) / <alpha-value>)",
@@ -25,8 +33,19 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-segoe)", "Segoe UI", "system-ui", "sans-serif"],
+        sans: ["var(--font-segoe)", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "system-ui", "sans-serif"],
         tinder: ["var(--font-tinder)", "Nunito", "sans-serif"],
+      },
+      backdropBlur: {
+        glass: "var(--tg-blur)",
+      },
+      borderRadius: {
+        "glass-panel": "1rem",
+        "glass-control": "0.75rem",
+      },
+      boxShadow: {
+        glass: "var(--tg-shadow)",
+        "glass-lg": "var(--tg-shadow-lg)",
       },
     },
   },

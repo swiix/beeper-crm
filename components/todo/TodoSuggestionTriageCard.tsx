@@ -56,10 +56,8 @@ function DurationQuickBadges({
               onPick(pick.hours);
             }}
             className={[
-              "rounded-full border px-2.5 py-1 text-[11px] font-medium transition",
-              isActive
-                ? "border-wa-green bg-wa-green/15 text-wa-green"
-                : "border-wa-border bg-wa-panel-secondary text-wa-text-primary hover:border-wa-green/40 hover:bg-wa-green/10",
+              "tg-chip text-[11px]",
+              isActive ? "tg-chip-active" : "",
             ].join(" ")}
           >
             {pick.label}
@@ -99,7 +97,7 @@ function TriageFieldShell({
 }) {
   if (active) {
     return (
-      <div className="rounded-xl border border-wa-green/35 bg-wa-green/[0.06] px-3 py-2.5 shadow-sm ring-1 ring-wa-green/20">
+      <div className="rounded-xl border border-wa-green/35 bg-wa-green/[0.06] px-3 py-2.5 shadow-sm ring-1 ring-wa-green/20 backdrop-blur-sm">
         <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-wa-green">
           <span aria-hidden>{icon}</span>
           {label}
@@ -111,7 +109,7 @@ function TriageFieldShell({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-transparent transition hover:border-wa-border/80 hover:bg-wa-panel/50">
+    <div className="overflow-hidden rounded-xl border border-transparent transition hover:border-[rgb(var(--tg-border))] hover:bg-white/5">
       <button
         type="button"
         onClick={onActivate}
@@ -310,7 +308,7 @@ export function TodoSuggestionTriageCard({
   return (
     <div
       ref={cardRef}
-      className="w-full max-w-md overflow-hidden rounded-2xl border border-wa-border/80 bg-gradient-to-b from-wa-panel to-wa-panel-secondary/40 shadow-md"
+      className="w-full max-w-md overflow-hidden tg-panel shadow-glass"
     >
       <div className="space-y-1 p-2">
         {onChatNameChange && (

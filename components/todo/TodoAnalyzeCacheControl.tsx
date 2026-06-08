@@ -36,7 +36,7 @@ export function TodoAnalyzeCacheControl({
               ? "Bereits analysierte Chats mit gleichem Nachrichten-Stand werden übersprungen (schneller, weniger API-Kosten)."
               : "Jeder Chat wird neu analysiert, auch wenn ein frischer Cache existiert."
           }
-          className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
+          className="tg-input mt-1 w-full py-1.5 text-sm"
         >
           {(Object.keys(CACHE_MODE_LABELS) as TodoAnalyzeCacheMode[]).map((key) => (
             <option key={key} value={key}>

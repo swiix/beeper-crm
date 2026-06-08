@@ -14,7 +14,7 @@ export function TodoSyncBadge({
   if (todoSyncTarget === "google" && externalGoogleTaskId) {
     return (
       <span
-        className="shrink-0 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400"
+        className="shrink-0 tg-surface px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400"
         title={`Google Task ${externalGoogleTaskId}`}
       >
         G✓
@@ -24,7 +24,7 @@ export function TodoSyncBadge({
   if (todoSyncTarget === "reclaim" && externalReclaimTaskId) {
     return (
       <span
-        className="shrink-0 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400"
+        className="shrink-0 tg-surface px-1.5 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400"
         title={`Reclaim Task ${externalReclaimTaskId}`}
       >
         R✓

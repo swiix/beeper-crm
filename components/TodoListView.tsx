@@ -48,6 +48,18 @@ import {
   type TriageQueueItem,
 } from "@/components/todo/TodoSuggestionTriage";
 import { TodoCommandPalette, WORK_MODE_LABELS, type TodoCommandAction } from "@/components/todo/TodoCommandPalette";
+import {
+  TodoGlassShell,
+  TodoGlassPanel,
+  TodoGlassPanelScroll,
+  TodoGlassResizeHandle,
+  TodoGlassSection,
+  TodoGlassSegmentedControl,
+  TodoGlassButton,
+  TodoGlassInput,
+  TodoGlassSelect,
+  TodoGlassListRow,
+} from "@/components/todo/glass";
 import { buildAppUrl } from "@/lib/app-routes";
 import {
   applyTodoAnalyzePreset,
@@ -707,6 +719,8 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const MIN_COL2 = 240;
   const MIN_COL3 = 200;
   const HANDLE_WIDTH = 6;
+  /** Shell padding (p-2×2) + flex gaps (gap-2×4) + resize handles */
+  const SHELL_CHROME_WIDTH = 16 + 4 * 8 + 2 * HANDLE_WIDTH;
 
   const handleResizeMouseDown = useCallback((col: 1 | 2) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -720,10 +734,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       const rect = containerRef.current.getBoundingClientRect();
       const delta = moveEvent.clientX - state.startX;
       if (state.col === 1) {
-        const maxCol1 = rect.width - MIN_COL2 - MIN_COL3 - 2 * HANDLE_WIDTH;
+        const maxCol1 = rect.width - MIN_COL2 - MIN_COL3 - SHELL_CHROME_WIDTH;
         setCol1Width(Math.min(maxCol1, Math.max(MIN_COL1, state.startWidth + delta)));
       } else {
-        const maxCol2 = rect.width - state.startCol1Width - MIN_COL3 - 2 * HANDLE_WIDTH;
+        const maxCol2 = rect.width - state.startCol1Width - MIN_COL3 - SHELL_CHROME_WIDTH;
         setCol2Width(Math.min(maxCol2, Math.max(MIN_COL2, state.startWidth + delta)));
       }
     };
@@ -2403,76 +2417,57 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         onClose={() => setCommandPaletteOpen(false)}
         actions={commandPaletteActions}
       />
-      <div ref={containerRef} className="flex h-full min-h-0">
+      <div ref={containerRef} className="todo-glass-root flex h-full min-h-0 flex-col">
+      <TodoGlassShell>
       {/* Column 1: Chats */}
-      <div
-        className="flex shrink-0 flex-col border-r border-wa-border bg-wa-panel"
+      <TodoGlassPanel
         style={{ width: layoutCol1Width, minWidth: MIN_COL1 }}
-      >
-        <div className="border-b border-wa-border p-2">
-          <div className="mb-2 flex gap-0.5 rounded-lg bg-wa-panel-secondary/80 p-0.5">
-            {(["inbox", "review", "bulk"] as TodoWorkMode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setWorkMode(m)}
-                title={`Arbeitsmodus: ${WORK_MODE_LABELS[m]}`}
-                className={`flex-1 rounded-md px-1 py-1 text-[10px] font-medium ${
-                  workMode === m ? "bg-wa-green text-white" : "text-wa-text-secondary hover:text-wa-text-primary"
-                }`}
-              >
-                {WORK_MODE_LABELS[m]}
-              </button>
-            ))}
-          </div>
-          <div className="mb-2 flex gap-1">
-            <button
-              type="button"
-              onClick={() => setLeftTab("dashboard")}
-              title="Usage-Statistik und Einstellungen"
-              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
-                leftTab === "dashboard"
-                  ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
-                  : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
-              }`}
-            >
-              Dashboard
-            </button>
-            <button
-              type="button"
-              onClick={() => setLeftTab("chats")}
-              title="Chat-Liste und Vorschläge"
-              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
-                leftTab === "chats"
-                  ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
-                  : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
-              }`}
-            >
-              Chats
-            </button>
-          </div>
-          <label className="text-xs font-medium text-wa-text-secondary">Account</label>
+        header={
+          <>
+          <TodoGlassSection className="mb-0" muted>
+          <TodoGlassSegmentedControl
+            value={workMode}
+            onChange={setWorkMode}
+            options={(["inbox", "review", "bulk"] as TodoWorkMode[]).map((m) => ({
+              value: m,
+              label: WORK_MODE_LABELS[m],
+              title: `Arbeitsmodus: ${WORK_MODE_LABELS[m]}`,
+            }))}
+          />
+          </TodoGlassSection>
+          <TodoGlassSection className="mb-0 mt-2" muted>
+          <TodoGlassSegmentedControl
+            value={leftTab}
+            onChange={setLeftTab}
+            options={[
+              { value: "dashboard" as const, label: "Dashboard", title: "Usage-Statistik und Einstellungen" },
+              { value: "chats" as const, label: "Chats", title: "Chat-Liste und Vorschläge" },
+            ]}
+          />
+          </TodoGlassSection>
+          <div className="mt-3">
           {accountsLoading ? (
-            <p className="mt-1 text-sm text-wa-text-secondary">Lade Accounts…</p>
+            <p className="text-sm text-wa-text-secondary">Lade Accounts…</p>
           ) : accountsError ? (
-            <div className="mt-1 rounded-lg border border-red-400/50 bg-red-500/10 p-2 text-sm text-red-600">
+            <div className="tg-alert tg-alert-warning">
               <p className="font-medium">Accounts nicht geladen</p>
               <p className="mt-0.5 text-xs">{accountsError.message}</p>
-              <button
-                type="button"
+              <TodoGlassButton
+                variant="ghost"
+                className="mt-2 text-xs text-red-600 underline"
                 onClick={() => mutateAccounts()}
                 title="Accounts erneut laden"
-                className="mt-2 text-xs font-medium text-red-600 underline hover:no-underline"
               >
                 Erneut versuchen
-              </button>
+              </TodoGlassButton>
             </div>
           ) : accounts.length === 0 ? (
-            <p className="mt-1 text-sm text-amber-600">
+            <p className="text-sm text-amber-600">
               Keine Accounts. Beeper Desktop starten und verbinden.
             </p>
           ) : (
-            <select
+            <TodoGlassSelect
+              label="Account"
               value={accountId ?? ""}
               onChange={(e) => {
                 const id = e.target.value || null;
@@ -2481,7 +2476,6 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 setSelectedChatId(null);
               }}
               title="Beeper-Account auswählen"
-              className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
             >
               {accounts.map((acc) => {
                 const id = getAccountId(acc);
@@ -2492,12 +2486,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   </option>
                 );
               })}
-            </select>
+            </TodoGlassSelect>
           )}
-        </div>
-        <div className="flex-1 overflow-y-auto p-2">
+          </div>
+          </>
+        }
+      >
+        <TodoGlassPanelScroll>
           {leftTab === "dashboard" ? (
-            <div className="rounded-lg border border-wa-border bg-wa-panel-secondary/40 p-3">
+            <div className="tg-surface p-3">
               <p className="text-sm font-semibold text-wa-text-primary">Dashboard</p>
               <p className="mt-1 text-xs text-wa-text-secondary">
                 Links oben kannst du jederzeit zurück zu „Chats“ wechseln.
@@ -2528,66 +2525,67 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           ) : null}
           {leftTab === "chats" && !chatsLoading && !chatsError && chats.length > 0 && (
             <>
-              <input
+              <TodoGlassSection label="Suche & Filter" muted>
+              <TodoGlassInput
                 type="search"
                 placeholder={isWhatsAppAccount ? "Chat suchen (Name, Nummer, ID)" : "Chat suchen (Name, ID)"}
                 value={chatSearchQuery}
                 onChange={(e) => setChatSearchQuery(e.target.value)}
-                className="mb-2 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary"
                 title={
                   isWhatsAppAccount
                     ? "Name, Chat-ID oder Telefonnummer (Leerzeichen in Nummern werden ignoriert)"
                     : "Chat-Liste nach Name oder ID filtern"
                 }
               />
+              <div className="mt-2">
               <TodoInboxFilters value={inboxFilter} onChange={setInboxFilter} />
+              </div>
               <TodoAnalyzeCacheControl
-                className="mb-2"
+                className="mt-2"
                 id="todo-analyze-cache-chats"
                 analyzeForce={analyzeForce}
                 onChange={setAnalyzeCacheForce}
               />
-              <label className="mb-2 block text-xs text-wa-text-secondary">
-                Batch-Scope
-                <select
-                  value={batchScope}
-                  onChange={(e) => setBatchScope(e.target.value as TodoBatchScope)}
-                  title="Welche Chats für Batch-Analyse gelten"
-                  className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
-                >
-                  {(Object.keys(TODO_BATCH_SCOPE_LABELS) as TodoBatchScope[]).map((scope) => (
-                    <option key={scope} value={scope}>
-                      {TODO_BATCH_SCOPE_LABELS[scope]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="mb-2">
-                <select
-                  value={chatListView}
-                  onChange={(e) => {
-                    const v = e.target.value as ChatListViewType;
-                    setChatListView(v);
-                    const saved = getChatViewFilter();
-                    setChatViewFilter({ ...saved, chatListView: v });
-                  }}
-                  title="Welche Chats in der Liste anzeigen"
-                  className="w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
-                >
-                  <option value="all">Alle (inkl. archiviert)</option>
-                  <option value="private">Private Chats</option>
-                  <option value="groups">Nur Gruppen</option>
-                  <option value="archived">Nur archivierte</option>
-                </select>
-              </div>
+              <TodoGlassSelect
+                label="Batch-Scope"
+                value={batchScope}
+                onChange={(e) => setBatchScope(e.target.value as TodoBatchScope)}
+                title="Welche Chats für Batch-Analyse gelten"
+                className="mt-2"
+              >
+                {(Object.keys(TODO_BATCH_SCOPE_LABELS) as TodoBatchScope[]).map((scope) => (
+                  <option key={scope} value={scope}>
+                    {TODO_BATCH_SCOPE_LABELS[scope]}
+                  </option>
+                ))}
+              </TodoGlassSelect>
+              <TodoGlassSelect
+                label="Chat-Ansicht"
+                value={chatListView}
+                onChange={(e) => {
+                  const v = e.target.value as ChatListViewType;
+                  setChatListView(v);
+                  const saved = getChatViewFilter();
+                  setChatViewFilter({ ...saved, chatListView: v });
+                }}
+                title="Welche Chats in der Liste anzeigen"
+                className="mt-2"
+              >
+                <option value="all">Alle (inkl. archiviert)</option>
+                <option value="private">Private Chats</option>
+                <option value="groups">Nur Gruppen</option>
+                <option value="archived">Nur archivierte</option>
+              </TodoGlassSelect>
+              </TodoGlassSection>
               {selectedChatIds.length > 1 && (
-                <div className="mb-2 rounded-lg border border-wa-green/50 bg-wa-green/5 px-2 py-1.5">
+                <TodoGlassSection label="Auswahl" className="tg-alert tg-alert-info !p-2.5">
                   <p className="text-xs font-medium text-wa-text-primary">
-                    {selectedChatIds.length} Chats ausgewählt <span className="text-wa-text-secondary font-normal">(Esc zum Aufheben)</span>
+                    {selectedChatIds.length} Chats ausgewählt <span className="font-normal text-wa-text-secondary">(Esc zum Aufheben)</span>
                   </p>
                   <div className="mt-1.5 flex gap-1.5">
-                    <button
-                      type="button"
+                    <TodoGlassButton
+                      variant="primary"
+                      className="flex-1 text-xs"
                       onClick={(e) => {
                         if (e.shiftKey) {
                           const ids = selectedChatIds.filter((id) => !ignoredChatIds.includes(id));
@@ -2599,52 +2597,53 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                       }}
                       disabled={loadingAllSuggestions}
                       title="Ausgewählte Chats analysieren (Shift+Klick: Einstellungen)"
-                      className="flex-1 rounded-lg bg-wa-green px-2 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
                     >
                       {loadingAllSuggestions && loadingAllProgress
                         ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
                         : "Auswahl analysieren"}
-                    </button>
+                    </TodoGlassButton>
                     {loadingAllSuggestions && (
-                      <button
-                        type="button"
+                      <TodoGlassButton
+                        variant="destructive"
+                        className="shrink-0 text-xs"
                         onClick={cancelAnalyzeBatch}
                         title="Analyse abbrechen"
-                        className="shrink-0 rounded-lg border border-red-400/60 bg-red-500/10 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/20"
                       >
                         Abbrechen
-                      </button>
+                      </TodoGlassButton>
                     )}
                   </div>
-                </div>
+                </TodoGlassSection>
               )}
-              <div className="mb-2">
-                <button
-                  type="button"
+              <TodoGlassSection label="Aktionen">
+                <TodoGlassButton
+                  variant="secondary"
+                  fullWidth
                   onClick={(e) => handleBatchAnalyzeClick(e, "all")}
                   disabled={loadingAllSuggestions || batchTargetChats.length === 0}
                   title={`Todo-Vorschläge für ${formatChatCountLabel(batchTargetChats.length)} laden (${TODO_BATCH_SCOPE_LABELS[batchScope]}). Shift+Klick: Einstellungen.`}
-                  className="w-full rounded-lg border border-wa-border bg-wa-panel-secondary px-2 py-1.5 text-xs font-medium text-wa-text-primary hover:bg-wa-panel disabled:opacity-50"
+                  className="text-xs"
                 >
                   {loadingAllSuggestions && loadingAllProgress
                     ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
                     : `Vorschläge für ${formatChatCountLabel(batchTargetChats.length)} laden`}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
+                </TodoGlassButton>
+                <TodoGlassButton
+                  variant="secondary"
+                  fullWidth
+                  className="mt-1.5 text-xs text-blue-700 dark:text-blue-300"
+                  onClick={() => {
                     if (batchTargetChats.length === 0) return;
                     openAnalyzeSettingsModal("one-prompt", { targetChatIds: batchTargetChatIds });
                   }}
                   disabled={loadingAllSuggestions || batchTargetChats.length === 0}
                   title={`One-Prompt für ${formatChatCountLabel(batchTargetChats.length)} (${TODO_BATCH_SCOPE_LABELS[batchScope]})`}
-                  className="mt-1.5 w-full rounded-lg border border-blue-400/40 bg-blue-500/10 px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-500/20 disabled:opacity-50 dark:text-blue-300"
                 >
                   One-Prompt für {formatChatCountLabel(batchTargetChats.length)}
-                </button>
+                </TodoGlassButton>
                 {loadingAllSuggestions && loadingAllProgress && (
                   <>
-                    <p className="mt-1 text-xs text-wa-text-secondary">
+                    <p className="mt-2 text-xs text-wa-text-secondary">
                       {loadingAllProgress.done} von {loadingAllProgress.total} Chats analysiert
                       {" · "}
                       {loadingAllProgress.messagesLoaded} Nachrichten in fertigen Chats
@@ -2654,19 +2653,20 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                             : loadingAllStep}`
                         : ""}
                     </p>
-                    <button
-                      type="button"
+                    <TodoGlassButton
+                      variant="destructive"
+                      fullWidth
+                      className="mt-1.5 text-xs"
                       onClick={cancelAnalyzeBatch}
                       title="Analyse abbrechen"
-                      className="mt-1.5 w-full rounded-lg border border-red-400/60 bg-red-500/10 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/20"
                     >
                       Abbrechen
-                    </button>
+                    </TodoGlassButton>
                   </>
                 )}
-              </div>
+              </TodoGlassSection>
               {loadingAllError && (
-                <p className="mb-2 text-xs text-amber-600">{loadingAllError}</p>
+                <p className="tg-alert tg-alert-warning mb-2 text-xs">{loadingAllError}</p>
               )}
               {chatSearchQuery.trim() && filteredChatsForList.length === 0 && (
                 <p className="text-sm text-wa-text-secondary">Keine Chats passen zur Suche.</p>
@@ -2674,25 +2674,20 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </>
           )}
           {!chatsLoading && !chatsError && chats.length > 0 && filteredChatsForList.length > 0 && (
-            <>
-              <button
-                type="button"
+            <TodoGlassSection label="Chats">
+              <TodoGlassListRow
+                selected={selectedChatId === ALL_CHATS_SENTINEL}
                 onClick={() => {
                   setSelectedChatIds([]);
                   setSelectedChatId(ALL_CHATS_SENTINEL);
                 }}
-                className={`mb-2 flex w-full items-center justify-between rounded-lg border px-2 py-2 text-left text-sm transition-colors ${
-                  selectedChatId === ALL_CHATS_SENTINEL
-                    ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
-                    : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
-                }`}
                 title="Alle bereits geladenen Vorschläge anzeigen"
               >
                 <span className="truncate font-medium">ALLE Vorschläge</span>
-                <span className="ml-1 rounded bg-wa-panel px-1.5 py-0.5 text-xs text-wa-text-secondary">
+                <span className="tg-badge ml-1">
                   {Object.values(suggestionsByChat).reduce((acc, list) => acc + list.length, 0)}
                 </span>
-              </button>
+              </TodoGlassListRow>
               {sortedChatsForList.map((chat, index) => {
             const id = chat.id;
             const name = (chat.name ?? chat.participants?.[0]?.name ?? id?.slice(0, 8) ?? "Chat") as string;
@@ -2705,9 +2700,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             const locallyPinned = pinnedChatIds.includes(id);
             const inboxStatus = id ? chatInboxStatusById[id] : undefined;
             return (
-              <button
+              <TodoGlassListRow
                 key={id}
-                type="button"
+                selected={selected}
+                inSelection={inSelection}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setSuggestionContextMenu(null);
@@ -2745,13 +2741,6 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   setAcceptAllResult(null);
                 }}
                 title={`${name}${suggestionCount > 0 ? ` · ${suggestionCount} Vorschlag/Vorschläge` : ""} · Klick: auswählen, Strg/Kmd: Mehrfachauswahl, Rechtsklick: Kontextmenü`}
-                className={`mb-1 flex w-full items-center justify-between rounded-lg border px-2 py-2 text-left text-sm transition-colors ${
-                  selected
-                    ? "border-wa-green bg-wa-green/10 text-wa-text-primary"
-                    : inSelection
-                      ? "border-wa-green/60 bg-wa-green/5 text-wa-text-primary"
-                      : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:bg-wa-panel-secondary"
-                }`}
               >
                 <span className="truncate">
                   {pinnedForAnalysis ? (
@@ -2761,7 +2750,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   ) : null}
                   {name}
                   {ignoredForAnalysis ? (
-                    <span className="ml-1 inline-flex rounded bg-amber-500/15 px-1 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Für Todo-Analyse ignoriert">
+                    <span className="tg-badge ml-1 text-[10px] text-amber-700 dark:text-amber-400" title="Für Todo-Analyse ignoriert">
                       ignoriert
                     </span>
                   ) : null}
@@ -2774,86 +2763,85 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     />
                   )}
                   {suggestionCount > 0 && (
-                    <span className="rounded bg-wa-panel px-1.5 py-0.5 text-xs text-wa-text-secondary" title="Vorschläge geladen">
+                    <span className="tg-badge" title="Vorschläge geladen">
                       {suggestionCount}
                     </span>
                   )}
                   {count > 0 && (
-                    <span className="rounded-full bg-wa-green/20 px-1.5 py-0.5 text-xs font-medium text-wa-green">
+                    <span className="tg-badge font-medium text-wa-green">
                       {count}
                     </span>
                   )}
                 </span>
-              </button>
+              </TodoGlassListRow>
             );
           })}
-              <p className="mt-2 text-[10px] text-wa-text-secondary" title="Tastatur und Maus">
+              <p className="mt-2 text-xs text-wa-text-secondary" title="Tastatur und Maus">
                 Shift+Klick = Bereich wählen, Strg/Cmd+Klick = einzeln an-/abwählen, Esc = Auswahl aufheben.
               </p>
-            </>
+            </TodoGlassSection>
           )}
-        </div>
+        </TodoGlassPanelScroll>
         {chatContextMenu && (
           <div
-            className="fixed z-50 min-w-56 rounded-lg border border-wa-border bg-wa-panel p-1 shadow-lg"
+            className="tg-popover fixed z-50 min-w-56"
             style={{ left: chatContextMenu.x, top: chatContextMenu.y }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
+            <TodoGlassButton
+              variant="ghost"
+              fullWidth
+              className="justify-start text-sm"
               onClick={() => {
                 const id = chatContextMenu.chatId;
                 togglePinnedChat(id, !pinnedChatIds.includes(id));
                 setChatContextMenu(null);
               }}
-              className="w-full rounded px-2 py-1.5 text-left text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
             >
               {pinnedChatIds.includes(chatContextMenu.chatId) ? "Pin entfernen" : "Anpinnen"}
-            </button>
-            <button
-              type="button"
+            </TodoGlassButton>
+            <TodoGlassButton
+              variant="ghost"
+              fullWidth
+              className="justify-start text-sm"
               onClick={() => {
                 const id = chatContextMenu.chatId;
                 updateIgnoredChatIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
                 setChatContextMenu(null);
               }}
-              className="w-full rounded px-2 py-1.5 text-left text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
             >
               {ignoredChatIds.includes(chatContextMenu.chatId) ? "Von Ignorieren entfernen" : "Für Analyse ignorieren"}
-            </button>
+            </TodoGlassButton>
           </div>
         )}
         {suggestionContextMenu && (
           <div
-            className="fixed z-50 min-w-72 rounded-lg border border-wa-border bg-wa-panel p-1 shadow-lg"
+            className="tg-popover fixed z-50 min-w-72"
             style={{ left: suggestionContextMenu.x, top: suggestionContextMenu.y }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
+            <TodoGlassButton
+              variant="ghost"
+              fullWidth
+              className="justify-start text-sm"
               onClick={() => ignoreChatForFutureSuggestions(suggestionContextMenu.chatId)}
-              className="w-full rounded px-2 py-1.5 text-left text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
             >
               Kontakt für zukünftige Analysen ignorieren und alle Vorschläge dieses Kontakts löschen
-            </button>
+            </TodoGlassButton>
           </div>
         )}
-      </div>
+      </TodoGlassPanel>
 
-      <div
-        role="separator"
+      <TodoGlassResizeHandle
         aria-label="Spaltenbreite Chats anpassen"
-        className="shrink-0 cursor-col-resize border-r border-wa-border bg-wa-border/30 hover:bg-wa-green/20 transition-colors"
-        style={{ width: HANDLE_WIDTH }}
         onMouseDown={handleResizeMouseDown(1)}
       />
 
       {/* Column 2: Vorschläge (largest) */}
-      <div
-        className="flex shrink-0 flex-col border-r border-wa-border bg-wa-panel"
+      <TodoGlassPanel
         style={{ width: layoutCol2Width, minWidth: MIN_COL2 }}
-      >
-        <div className="shrink-0 border-b border-wa-border p-2">
+        header={
+        <div className="shrink-0">
           {leftTab !== "dashboard" && (
             <div className="mb-2 flex items-center justify-between gap-2">
               <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
@@ -2865,18 +2853,18 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 />
                 Triage-Modus
               </label>
-              <button
-                type="button"
+              <TodoGlassButton
+                variant="ghost"
+                className="text-xs"
                 onClick={() => setCommandPaletteOpen(true)}
-                className="rounded border border-wa-border px-2 py-0.5 text-[10px] text-wa-text-secondary hover:bg-wa-panel-secondary"
                 title="Command Palette (⌘K)"
               >
                 ⌘K
-              </button>
+              </TodoGlassButton>
             </div>
           )}
           {batchZeroResultsHint && !loadingAllSuggestions && leftTab !== "dashboard" && (
-            <div className="mb-2 rounded-lg border border-wa-border bg-wa-panel-secondary px-2 py-2 text-xs text-wa-text-secondary">
+            <div className="tg-alert tg-alert-warning mb-2">
               <p>Batch abgeschlossen ohne neue Vorschläge.</p>
               <p className="mt-1">Preset oder Inbox-Filter anpassen, oder mit Shift+Klick „Alles neu“ analysieren.</p>
               <button
@@ -2892,7 +2880,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </div>
           )}
           {postAnalyzeBanner && leftTab !== "dashboard" && (
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-wa-green/40 bg-wa-green/10 px-2 py-2 text-xs">
+            <div className="tg-alert tg-alert-info mb-2 flex flex-wrap items-center justify-between gap-2">
               <span className="text-wa-text-primary">
                 {postAnalyzeBanner.suggestionCount} neue Vorschläge in {postAnalyzeBanner.chatCount} Chats
               </span>
@@ -2920,7 +2908,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           {leftTab === "dashboard" ? (
             <>
               <h2 className="text-sm font-semibold text-wa-text-primary">Dashboard</h2>
-              <div className="mt-2 rounded-lg border border-wa-border bg-wa-panel-secondary/40 p-2">
+              <div className="mt-2 tg-surface p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-medium text-wa-text-primary">OpenAI-Usage</p>
                   <label className="inline-flex items-center gap-2 text-[11px] text-wa-text-secondary">
@@ -2963,7 +2951,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                         </span>
                       </span>
                     </div>
-                    <div className="max-h-64 overflow-y-auto rounded border border-wa-border bg-wa-panel/40">
+                    <div className="max-h-64 overflow-y-auto tg-surface">
                       <table className="w-full text-left text-[11px]">
                         <thead className="sticky top-0 bg-wa-panel">
                           <tr className="text-wa-text-secondary">
@@ -3024,15 +3012,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 onChange={setAnalyzeCacheForce}
               />
               <div className="flex gap-2">
-                <button
-                  type="button"
+                <TodoGlassButton
+                  variant="primary"
+                  className="flex-1"
                   onClick={handleSingleAnalyzeClick}
                   disabled={isCurrentChatAnalyzing}
                   title="Diesen Chat analysieren (Shift+Klick: Einstellungen)"
-                  className="flex-1 rounded-lg bg-wa-green px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                 >
                   {isCurrentChatAnalyzing ? "Analysiere…" : "Todo-Vorschläge laden"}
-                </button>
+                </TodoGlassButton>
                 {isCurrentChatAnalyzing && (
                   <button
                     type="button"
@@ -3060,7 +3048,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </div>
           )}
         </div>
-        <div ref={suggestionsColumnRef} className="flex-1 overflow-y-auto p-2">
+        }
+      >
+        <TodoGlassPanelScroll ref={suggestionsColumnRef}>
           {triageEnabled && leftTab !== "dashboard" && triageQueue.length > 0 ? (
             <TodoSuggestionTriage
               items={triageQueue}
@@ -3101,7 +3091,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                         setChatContextMenu(null);
                         setSuggestionContextMenu({ chatId, x: e.clientX, y: e.clientY });
                       }}
-                      className="flex items-start justify-between gap-2 rounded-lg border border-wa-border bg-wa-panel-secondary/50 p-3 text-sm"
+                      className="flex items-start justify-between gap-2 tg-surface p-3 text-sm"
                     >
                       <div className="min-w-0 flex-1">
                         <button
@@ -3244,7 +3234,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                           setChatContextMenu(null);
                           setSuggestionContextMenu({ chatId, x: e.clientX, y: e.clientY });
                         }}
-                        className="flex items-start justify-between gap-2 rounded-lg border border-wa-border bg-wa-panel-secondary/50 p-3 text-sm"
+                        className="flex items-start justify-between gap-2 tg-surface p-3 text-sm"
                       >
                         <div className="min-w-0 flex-1">
                           <button
@@ -3377,7 +3367,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 <button
                   type="button"
                   onClick={() => onOpenChat(selectedChatId, accountId)}
-                  className="mb-2 w-full rounded-lg border border-wa-border bg-wa-panel px-2 py-1.5 text-sm text-wa-text-primary hover:bg-wa-panel-secondary"
+                  className="tg-btn-secondary mb-2 w-full py-1.5 text-sm"
                   title="Diesen Chat in neuem Tab öffnen"
                 >
                   Chat in neuem Tab öffnen
@@ -3408,7 +3398,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                         setChatContextMenu(null);
                         setSuggestionContextMenu({ chatId: selectedChatId, x: e.clientX, y: e.clientY });
                       }}
-                      className="flex items-start justify-between gap-2 rounded-lg border border-wa-border bg-wa-panel-secondary/50 p-3 text-sm"
+                      className="flex items-start justify-between gap-2 tg-surface p-3 text-sm"
                     >
                       <div className="min-w-0 flex-1">
                         {isEditing && selectedChatId ? (
@@ -3527,33 +3517,33 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               </div>
             </p>
           )}
-        </div>
-      </div>
+        </TodoGlassPanelScroll>
+      </TodoGlassPanel>
 
-      <div
-        role="separator"
+      <TodoGlassResizeHandle
         aria-label="Spaltenbreite Vorschläge anpassen"
-        className="shrink-0 cursor-col-resize border-r border-wa-border bg-wa-border/30 hover:bg-wa-green/20 transition-colors"
-        style={{ width: HANDLE_WIDTH }}
         onMouseDown={handleResizeMouseDown(2)}
       />
 
       {/* Column 3: Alle Todos */}
-      <div className="flex min-w-0 flex-1 flex-col bg-wa-chat-bg" style={{ minWidth: MIN_COL3 }}>
-        <div className="flex shrink-0 flex-col gap-1.5 border-b border-wa-border bg-wa-panel p-1.5">
+      <TodoGlassPanel
+        className="min-w-0 flex-1"
+        style={{ minWidth: MIN_COL3 }}
+        header={
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <h2 className="shrink-0 text-sm font-semibold text-wa-text-primary">Alle Todos</h2>
-            <input
+            <TodoGlassInput
               type="search"
               placeholder="Suchen…"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
-              className="min-w-0 flex-1 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-xs text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+              className="min-w-0 flex-1 py-1.5 text-xs"
               aria-label="Todo-Liste durchsuchen"
               title="Todos durchsuchen (Titel, Notizen, Chat-Name)"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="tg-surface-muted flex flex-wrap items-center gap-1 p-2">
             {[
               { emoji: "📋", label: "Offen", title: "Nur offene Todos (ohne Remind later)", status: "open" as const, due: "any" as const },
               { emoji: "📅", label: "Heute", title: "Offene mit Frist heute", status: "open" as const, due: "due_today" as const },
@@ -3567,9 +3557,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   type="button"
                   onClick={() => { setTodoStatus(status); setDueFilter(due); }}
                   title={btnTitle}
-                  className={`rounded px-1.5 py-1 text-base leading-none transition-colors ${
-                    active ? "bg-wa-green text-white" : "bg-wa-panel-secondary text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
-                  }`}
+                  className={`tg-chip ${active ? "tg-chip-active" : ""}`}
                 >
                   {emoji}
                 </button>
@@ -3579,7 +3567,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             <select
               value={sourceAccountIdFilter ?? ""}
               onChange={(e) => setSourceAccountIdFilter(e.target.value || null)}
-              className="max-w-[7rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              className="tg-input max-w-[7rem] py-1 pl-1 pr-5 text-xs"
               title="Nach Account filtern"
             >
               <option value="">👤 Alle</option>
@@ -3592,7 +3580,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             <select
               value={sourceChatIdFilter ?? ""}
               onChange={(e) => setSourceChatIdFilter(e.target.value || null)}
-              className="max-w-[7rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              className="tg-input max-w-[7rem] py-1 pl-1 pr-5 text-xs"
               title="Nach Chat filtern"
             >
               <option value="">💬 Alle</option>
@@ -3640,7 +3628,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 const [s, o] = (e.target.value.split("-") as [typeof sort, typeof order]);
                 setSort(s); setOrder(o);
               }}
-              className="max-w-[7rem] rounded border border-wa-border bg-wa-input-bg py-1 pl-1 pr-5 text-xs text-wa-text-primary"
+              className="tg-input max-w-[7rem] py-1 pl-1 pr-5 text-xs"
               title="Sortierung"
             >
               <option value="due-asc">↗️ Frist ↑</option>
@@ -3684,7 +3672,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </a>
           </div>
         </div>
-        <ul ref={todosListScrollRef} className="flex-1 overflow-y-auto p-2">
+        }
+      >
+        <TodoGlassPanelScroll>
+        <ul ref={todosListScrollRef} className="space-y-2">
           {todos.map((todo, index) => (
             <li
               key={todo.id}
@@ -3694,14 +3685,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               onDragLeave={handleTodoDragLeave}
               onDrop={(e) => handleTodoDrop(e, index)}
               onDragEnd={handleTodoDragEnd}
-              className={`mb-2 flex cursor-grab active:cursor-grabbing items-start gap-2 rounded-lg border p-2 transition-opacity ${
+              className={`tg-list-row cursor-grab active:cursor-grabbing items-start gap-2 p-2 transition-opacity ${
                 draggedTodoId === todo.id ? "opacity-50" : ""
               } ${
                 isOverdue(todo.due_date)
-                  ? "border-red-400/60 bg-red-500/5"
+                  ? "border-red-400/60 bg-red-500/10"
                   : isDueToday(todo.due_date)
-                    ? "border-amber-400/60 bg-amber-500/5"
-                    : "border-wa-border bg-wa-panel"
+                    ? "border-amber-400/60 bg-amber-500/10"
+                    : ""
               } ${dropIndex === index ? "ring-2 ring-wa-green ring-inset" : ""}`}
             >
               <span className="mr-1 shrink-0 text-wa-text-secondary/60" aria-hidden title="Zum Umsortieren ziehen">
@@ -3829,7 +3820,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     <button
                       type="button"
                       onClick={() => updateTodo(todo.id, { pinned: 0 })}
-                      className="rounded border border-wa-border bg-wa-panel-secondary px-1.5 py-0.5 text-xs text-wa-text-secondary hover:bg-wa-panel hover:text-wa-text-primary"
+                      className="tg-btn-ghost px-1.5 py-0.5 text-xs"
                       title="Als gesehen markieren (Pin entfernen)"
                     >
                       Gesehen
@@ -3852,7 +3843,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                       if (el) saveScrollTopAfterReminderRef.current = el.scrollTop;
                       updateTodo(todo.id, { reminder_at: ms, snoozed: 1, pinned: 0, archived: 1 });
                     }}
-                    className="rounded border border-wa-border bg-wa-panel-secondary px-1.5 py-0.5 text-xs text-wa-text-secondary hover:text-wa-text-primary"
+                    className="tg-btn-ghost px-1.5 py-0.5 text-xs"
                     title="Erinnerung setzen"
                   >
                     <option value="">Erinnern…</option>
@@ -4028,7 +4019,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </li>
           ))}
         </ul>
-      </div>
+        </TodoGlassPanelScroll>
+      </TodoGlassPanel>
+      </TodoGlassShell>
     </div>
     <OnePromptResultsDialog
       open={onePromptDialogOpen}

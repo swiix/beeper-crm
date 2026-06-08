@@ -35,13 +35,13 @@ export function TodoCommandPalette({ open, onClose, actions }: TodoCommandPalett
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 pt-[15vh] p-4"
+      className="tg-overlay fixed inset-0 z-[60] flex items-start justify-center pt-[15vh] p-4"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl border border-wa-border bg-wa-panel shadow-xl"
+        className="tg-modal w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         <input
@@ -57,7 +57,7 @@ export function TodoCommandPalette({ open, onClose, actions }: TodoCommandPalett
               onClose();
             }
           }}
-          className="w-full border-b border-wa-border bg-transparent px-4 py-3 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:outline-none"
+          className="tg-input w-full rounded-none border-0 border-b border-[rgb(var(--tg-border))] bg-transparent px-4 py-3 text-sm focus:ring-0"
         />
         <ul className="max-h-64 overflow-y-auto py-1">
           {filtered.length === 0 && (

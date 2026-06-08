@@ -141,17 +141,17 @@ export function TodoAnalyzeSettingsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="tg-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="analyze-settings-modal-title"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col rounded-xl border border-wa-border bg-wa-panel shadow-lg"
+        className="tg-modal flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 border-b border-wa-border p-4">
+        <div className="shrink-0 border-b border-[rgb(var(--tg-border))] p-4">
           <h2 id="analyze-settings-modal-title" className="text-sm font-semibold text-wa-text-primary">
             {MODE_TITLES[mode]}
           </h2>
@@ -172,11 +172,7 @@ export function TodoAnalyzeSettingsDialog({
                   type="button"
                   title={p.description}
                   onClick={() => selectPreset(p.id)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                    presetId === p.id
-                      ? "border-wa-green bg-wa-green/15 text-wa-text-primary"
-                      : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:border-wa-green/40"
-                  }`}
+                  className={`tg-chip ${presetId === p.id ? "tg-chip-active" : ""}`}
                 >
                   {p.label}
                 </button>
@@ -185,11 +181,7 @@ export function TodoAnalyzeSettingsDialog({
                 type="button"
                 onClick={() => selectPreset("custom")}
                 title="Alle Felder manuell einstellen"
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  presetId === "custom"
-                    ? "border-wa-green bg-wa-green/15 text-wa-text-primary"
-                    : "border-wa-border bg-wa-panel-secondary/50 text-wa-text-secondary hover:border-wa-green/40"
-                }`}
+                className={`tg-chip ${presetId === "custom" ? "tg-chip-active" : ""}`}
               >
                 Eigene
               </button>
@@ -209,7 +201,7 @@ export function TodoAnalyzeSettingsDialog({
                 setPresetId("custom");
               }}
               rows={2}
-              className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+              className="tg-input mt-1 w-full resize-y"
             />
           </div>
 
@@ -242,7 +234,7 @@ export function TodoAnalyzeSettingsDialog({
             </div>
           )}
 
-          <div className="rounded-lg border border-wa-border/80 bg-wa-panel-secondary/30 p-2.5 text-[11px] text-wa-text-secondary">
+          <div className="tg-surface-muted p-2.5 text-[11px] text-wa-text-secondary">
             {previewLoading && <p>Vorschau wird berechnet…</p>}
             {!previewLoading && preview && (
               <p>
@@ -272,13 +264,13 @@ export function TodoAnalyzeSettingsDialog({
             <button
               type="button"
               onClick={() => setAdvancedOpen((o) => !o)}
-              className="flex w-full items-center justify-between rounded-lg border border-wa-border/80 px-2 py-1.5 text-left text-xs font-medium text-wa-text-secondary hover:bg-wa-panel-secondary/50"
+              className="tg-surface flex w-full items-center justify-between px-2 py-1.5 text-left text-xs font-medium text-wa-text-secondary hover:bg-white/5"
             >
               <span>Erweitert</span>
               <span aria-hidden>{advancedOpen ? "▼" : "▶"}</span>
             </button>
             {advancedOpen && (
-              <div className="mt-2 rounded-lg border border-wa-border/80 p-2">
+              <div className="tg-surface mt-2 p-2">
                 <TodoAnalyzeSettingsForm
                   idPrefix="analyze-settings-modal-advanced"
                   values={draft}
@@ -293,20 +285,16 @@ export function TodoAnalyzeSettingsDialog({
           </div>
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t border-wa-border p-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-wa-border bg-wa-panel-secondary px-3 py-1.5 text-sm font-medium text-wa-text-primary hover:bg-wa-panel"
-          >
+        <div className="flex shrink-0 justify-end gap-2 border-t border-[rgb(var(--tg-border))] p-4">
+          <button type="button" onClick={onClose} className="tg-btn-secondary px-3 py-1.5 text-sm">
             Abbrechen
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             disabled={confirmDisabled}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${
-              mode === "one-prompt" ? "bg-blue-600" : "bg-wa-green"
+            className={`px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${
+              mode === "one-prompt" ? "tg-btn-primary bg-blue-600" : "tg-btn-primary"
             }`}
           >
             {CONFIRM_LABELS[mode]}

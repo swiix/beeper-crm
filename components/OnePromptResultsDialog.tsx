@@ -86,12 +86,12 @@ export function OnePromptResultsDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="tg-overlay fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-5xl flex-col rounded-xl border border-wa-border bg-wa-panel shadow-2xl"
+        className="tg-modal flex max-h-[85vh] w-full max-w-5xl flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-wa-border px-4 py-3">
+        <div className="flex items-center justify-between border-b border-[rgb(var(--tg-border))] px-4 py-3">
           <h2 className="text-sm font-semibold text-wa-text-primary">One-Prompt Ergebnisse</h2>
           <button
             type="button"

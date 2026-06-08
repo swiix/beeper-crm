@@ -22,7 +22,7 @@ export function TodoInboxFilters({ value, onChange }: TodoInboxFiltersProps) {
         value={value}
         onChange={(e) => onChange(e.target.value as TodoInboxFilterId)}
         title="Chats nach Analyse-Status filtern"
-        className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary"
+        className="tg-input mt-1 w-full py-1.5 text-sm"
       >
         {FILTER_OPTIONS.map((o) => (
           <option key={o.id} value={o.id}>
