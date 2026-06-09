@@ -13,6 +13,7 @@ import { MAX_CHAT_MESSAGES } from "@/lib/chat-message-limits";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
 import { getTodoSuggestions, setTodoSuggestions } from "@/lib/todo-db";
 import { trackOpenAiUsageEvent } from "@/lib/openai-usage";
+import { buildAnalyzeUsageCostMeta, zeroAnalyzeUsageCostMeta } from "@/lib/openai-cost";
 import { getTranscript } from "@/lib/transcribe";
 import { getImageDescription } from "@/lib/vision";
 import { logTodoListAnalysisError } from "@/lib/todo-list-analysis-error-log";
@@ -522,6 +523,7 @@ export async function POST(request: NextRequest) {
                   last_message_date: cached?.last_message_date ?? latestMessageDate,
                   message_count: 0,
                   skipped_by_cache: true,
+                  ...zeroAnalyzeUsageCostMeta(),
                 }) + "\n";
               controller.enqueue(encoder.encode(ndjson));
               appendTodoAnalysisTrace({
@@ -573,6 +575,7 @@ export async function POST(request: NextRequest) {
                   message_count: 0,
                   message_fetch_rounds: messageFetchRounds,
                   skipped_by_delta: !force,
+                  ...zeroAnalyzeUsageCostMeta(),
                 }) + "\n";
               controller.enqueue(encoder.encode(ndjson));
               appendTodoAnalysisTrace({
@@ -733,6 +736,7 @@ export async function POST(request: NextRequest) {
                 last_message_date: lastMessageDate,
                 message_count: messages.length,
                 message_fetch_rounds: messageFetchRounds,
+                ...buildAnalyzeUsageCostMeta(data.usage),
               }) + "\n";
             appendTodoAnalysisTrace({
               ts: new Date().toISOString(),
@@ -782,6 +786,7 @@ export async function POST(request: NextRequest) {
         last_message_date: cached?.last_message_date ?? latestMessageDate,
         message_count: 0,
         skipped_by_cache: true,
+        ...zeroAnalyzeUsageCostMeta(),
       };
       appendTodoAnalysisTrace({
         ts: new Date().toISOString(),
@@ -821,6 +826,7 @@ export async function POST(request: NextRequest) {
         last_message_date: cached?.last_message_date ?? latestMessageDate,
         message_count: 0,
         skipped_by_delta: !force,
+        ...zeroAnalyzeUsageCostMeta(),
       };
       appendTodoAnalysisTrace({
         ts: new Date().toISOString(),
@@ -1014,6 +1020,7 @@ export async function POST(request: NextRequest) {
       estimated_total_hours: getEstimatedTotalHours(todos),
       last_message_date: lastMessageDate,
       message_count: messages.length,
+      ...buildAnalyzeUsageCostMeta(data.usage),
     };
     appendTodoAnalysisTrace({
       ts: new Date().toISOString(),

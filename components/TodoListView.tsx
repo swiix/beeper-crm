@@ -92,6 +92,7 @@ import {
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
 import { isEditableKeyboardTarget } from "@/lib/is-editable-keyboard-target";
 import { suggestionToCreateTodoSyntax } from "@/lib/reclaim-task-syntax";
+import { showAnalyzeCostNotification } from "@/lib/show-analyze-cost-notification";
 import {
   dueDateTimeToMs,
   formatDueDateTimeRelative,
@@ -423,6 +424,19 @@ function suggestionToDueApiFields(s: { due: string | null; due_time?: string | n
     due_time: dt.time ?? undefined,
     due_at: due_at ?? undefined,
   };
+}
+
+type TodoAnalyzeApiPayload = {
+  todos?: unknown[];
+  message_count?: number;
+  estimated_cost_usd?: number;
+};
+
+function readAnalyzeCostUsd(payload: TodoAnalyzeApiPayload | null | undefined): number {
+  if (typeof payload?.estimated_cost_usd !== "number" || !Number.isFinite(payload.estimated_cost_usd)) {
+    return 0;
+  }
+  return payload.estimated_cost_usd;
 }
 
 /** Max concurrent todo-list analyze requests when loading suggestions for all visible chats. */
@@ -1369,6 +1383,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     });
     setAcceptAllResult(null);
     setLastAnalyzedMessageCount(null);
+    let scanCostUsd = 0;
     try {
       const res = await fetch("/api/todo-list/analyze", {
         method: "POST",
@@ -1396,7 +1411,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let result: { todos: unknown[]; message_count: number } | null = null;
+        let result: TodoAnalyzeApiPayload | null = null;
         while (true) {
           if (signal.aborted) break;
           const { done, value } = await reader.read();
@@ -1408,11 +1423,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             const trimmed = line.trim();
             if (!trimmed) continue;
             try {
-              const event = JSON.parse(trimmed) as { type: string; page?: number; todos?: unknown[]; message_count?: number; error?: string };
+              const event = JSON.parse(trimmed) as TodoAnalyzeApiPayload & {
+                type: string;
+                page?: number;
+                error?: string;
+              };
               if (event.type === "messages_page" && typeof event.page === "number") {
                 setLoadingMessagePagesByChatId((prev) => ({ ...prev, [chatId]: event.page! }));
               } else if (event.type === "result") {
-                result = { todos: event.todos ?? [], message_count: event.message_count ?? 0 };
+                result = event;
               } else if (event.type === "error") {
                 throw new Error(event.error ?? "Analyse fehlgeschlagen");
               }
@@ -1423,16 +1442,25 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           }
         }
         if (result) {
+          scanCostUsd = readAnalyzeCostUsd(result);
           const list = toTodoSuggestionList(result.todos);
           setSuggestionsByChat((prev) => ({ ...prev, [chatId]: list }));
           if (typeof result.message_count === "number") setLastAnalyzedMessageCount(result.message_count);
         }
       } else {
-        const data = await res.json();
-        const list = toTodoSuggestionList((data as { todos?: unknown }).todos);
+        const data = (await res.json()) as TodoAnalyzeApiPayload;
+        scanCostUsd = readAnalyzeCostUsd(data);
+        const list = toTodoSuggestionList(data.todos);
         setSuggestionsByChat((prev) => ({ ...prev, [chatId]: list }));
-        const msgCount = typeof (data as { message_count?: number }).message_count === "number" ? (data as { message_count: number }).message_count : null;
+        const msgCount = typeof data.message_count === "number" ? data.message_count : null;
         if (msgCount != null) setLastAnalyzedMessageCount(msgCount);
+      }
+      if (!signal.aborted) {
+        void showAnalyzeCostNotification({
+          costUsd: scanCostUsd,
+          title: "Chat-Scan abgeschlossen",
+          detail: contactName ?? chatId.slice(0, 8),
+        });
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
@@ -1486,6 +1514,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     const failedRef = { current: 0 };
     const stoppedEarlyAfterFailuresRef = { current: false };
     const messagesLoadedRef = { current: 0 };
+    const batchCostUsdRef = { current: 0 };
     const chatNameById = new Map(
       chatList.map((c) => [c.id, (c.name ?? (c as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? ""])
     );
@@ -1521,7 +1550,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let buffer = "";
-            let result: { todos: unknown[]; message_count: number } | null = null;
+            let result: TodoAnalyzeApiPayload | null = null;
             while (true) {
               if (signal.aborted) break;
               const { done, value } = await reader.read();
@@ -1533,11 +1562,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 const trimmed = line.trim();
                 if (!trimmed) continue;
                 try {
-                  const event = JSON.parse(trimmed) as { type: string; page?: number; todos?: unknown[]; message_count?: number; error?: string };
+                  const event = JSON.parse(trimmed) as TodoAnalyzeApiPayload & {
+                    type: string;
+                    page?: number;
+                    error?: string;
+                  };
                   if (event.type === "messages_page" && typeof event.page === "number") {
                     setLoadingMessagePagesByChatId((prev) => ({ ...prev, [chatId]: event.page! }));
                   } else if (event.type === "result") {
-                    result = { todos: event.todos ?? [], message_count: event.message_count ?? 0 };
+                    result = event;
                   } else if (event.type === "error") {
                     throw new Error(event.error ?? "Analyse fehlgeschlagen");
                   }
@@ -1547,6 +1580,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               }
             }
             if (result) {
+              batchCostUsdRef.current += readAnalyzeCostUsd(result);
               const todos = toTodoSuggestionList(result.todos);
               const msgCount = typeof result.message_count === "number" ? result.message_count : 0;
               messagesLoadedRef.current += msgCount;
@@ -1554,9 +1588,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
             }
           } else {
-            const data = await res.json();
-            const todos = toTodoSuggestionList((data as { todos?: unknown }).todos);
-            const msgCount = typeof (data as { message_count?: number }).message_count === "number" ? (data as { message_count: number }).message_count : 0;
+            const data = (await res.json()) as TodoAnalyzeApiPayload;
+            batchCostUsdRef.current += readAnalyzeCostUsd(data);
+            const todos = toTodoSuggestionList(data.todos);
+            const msgCount = typeof data.message_count === "number" ? data.message_count : 0;
             messagesLoadedRef.current += msgCount;
             setBatchSuggestionChatOrder((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
             setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
@@ -1608,6 +1643,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           msg += ` Abgebrochen nach ${TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP} Fehlern.`;
         }
         setLoadingAllError(msg);
+      }
+      if (!signal.aborted) {
+        void showAnalyzeCostNotification({
+          costUsd: batchCostUsdRef.current,
+          title: "Batch-Scan abgeschlossen",
+          detail: `${doneRef.current}/${ids.length} Chats`,
+        });
       }
     }
   },
