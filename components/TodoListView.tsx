@@ -92,6 +92,7 @@ import {
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
 import { isEditableKeyboardTarget } from "@/lib/is-editable-keyboard-target";
 import { suggestionToCreateTodoSyntax } from "@/lib/reclaim-task-syntax";
+import { readAnalyzeCostUsd } from "@/lib/openai-cost";
 import { showAnalyzeCostNotification } from "@/lib/show-analyze-cost-notification";
 import {
   dueDateTimeToMs,
@@ -160,6 +161,7 @@ type OnePromptDialogResult = {
     due: string | null;
     priority: number | null;
   } | null;
+  estimated_cost_usd?: number;
 };
 
 type GoogleTasksStatus = {
@@ -432,13 +434,6 @@ type TodoAnalyzeApiPayload = {
   estimated_cost_usd?: number;
 };
 
-function readAnalyzeCostUsd(payload: TodoAnalyzeApiPayload | null | undefined): number {
-  if (typeof payload?.estimated_cost_usd !== "number" || !Number.isFinite(payload.estimated_cost_usd)) {
-    return 0;
-  }
-  return payload.estimated_cost_usd;
-}
-
 /** Max concurrent todo-list analyze requests when loading suggestions for all visible chats. */
 const TODO_ANALYZE_CONCURRENCY = 5;
 /** Stop batch analyze after this many failures (remaining chats are skipped). */
@@ -591,6 +586,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const [onePromptAcceptingByChatId, setOnePromptAcceptingByChatId] = useState<Record<string, boolean>>({});
   const [onePromptTargetCount, setOnePromptTargetCount] = useState(0);
   const [onePromptProcessedCount, setOnePromptProcessedCount] = useState(0);
+  const [onePromptTotalCostUsd, setOnePromptTotalCostUsd] = useState<number | null>(null);
   const [analyzeScanMode, setAnalyzeScanMode] = useState<TodoAnalyzeScanMode>(
     () => getTodoAnalyzePrefs().scanMode
   );
@@ -1672,6 +1668,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     setOnePromptRunLoading(true);
     setOnePromptResults([]);
     setOnePromptProcessedCount(0);
+    setOnePromptTotalCostUsd(null);
     setOnePromptDialogOpen(true);
     try {
       const targets = chatsAvailableForAnalysis.map((chat) => ({
@@ -1695,14 +1692,25 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       });
       const data = (await res.json().catch(() => ({}))) as {
         results?: OnePromptDialogResult[];
-        summary?: { processed?: number };
+        summary?: { processed?: number; total_cost_usd?: number };
         error?: string;
       };
       if (!res.ok) {
         throw new Error(data.error ?? "One-Prompt Analyse fehlgeschlagen");
       }
+      const processed = typeof data.summary?.processed === "number" ? data.summary.processed : targets.length;
+      const totalCostUsd =
+        typeof data.summary?.total_cost_usd === "number" && Number.isFinite(data.summary.total_cost_usd)
+          ? data.summary.total_cost_usd
+          : 0;
       setOnePromptResults(Array.isArray(data.results) ? data.results : []);
-      setOnePromptProcessedCount(typeof data.summary?.processed === "number" ? data.summary.processed : targets.length);
+      setOnePromptProcessedCount(processed);
+      setOnePromptTotalCostUsd(totalCostUsd);
+      void showAnalyzeCostNotification({
+        costUsd: totalCostUsd,
+        title: "One-Prompt Scan abgeschlossen",
+        detail: `${processed} Chats`,
+      });
     } catch (error) {
       setOnePromptRunError(error instanceof Error ? error.message : "One-Prompt Analyse fehlgeschlagen");
     } finally {
@@ -4177,6 +4185,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       error={onePromptRunError}
       targetCount={onePromptTargetCount}
       processedCount={onePromptProcessedCount}
+      totalCostUsd={onePromptTotalCostUsd}
       acceptingByChatId={onePromptAcceptingByChatId}
       onClose={() => setOnePromptDialogOpen(false)}
       onOpenChat={(chatId) => {

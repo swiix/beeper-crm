@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatAnalyzeCostUsd } from "@/lib/openai-cost";
 
 type OnePromptResultItem = {
   chatId: string;
@@ -19,6 +20,7 @@ type OnePromptResultItem = {
     due: string | null;
     priority: number | null;
   } | null;
+  estimated_cost_usd?: number;
 };
 
 export function OnePromptResultsDialog({
@@ -28,6 +30,7 @@ export function OnePromptResultsDialog({
   error,
   targetCount,
   processedCount,
+  totalCostUsd,
   onClose,
   onOpenChat,
   onAcceptOne,
@@ -41,6 +44,7 @@ export function OnePromptResultsDialog({
   error: string | null;
   targetCount: number;
   processedCount: number;
+  totalCostUsd?: number | null;
   onClose: () => void;
   onOpenChat: (chatId: string) => void;
   onAcceptOne: (result: OnePromptResultItem) => void;
@@ -101,11 +105,16 @@ export function OnePromptResultsDialog({
             Schließen
           </button>
         </div>
-        <div className="flex items-center justify-between border-b border-wa-border px-4 py-2 text-xs text-wa-text-secondary">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-wa-border px-4 py-2 text-xs text-wa-text-secondary">
           <span>
             {loading
               ? `Analysiere Chats… (${processedCount}/${Math.max(targetCount, processedCount)})`
               : `${matchedResults.length} Treffer · ${unmatchedResults.length} ohne Treffer · ${processedCount}/${Math.max(targetCount, processedCount)} analysiert`}
+            {!loading && totalCostUsd != null && (
+              <span className="ml-1 font-medium text-wa-green">
+                · Kosten: {formatAnalyzeCostUsd(totalCostUsd)} USD
+              </span>
+            )}
           </span>
           <label className="inline-flex items-center gap-1 text-xs text-wa-text-secondary">
             <input
@@ -167,6 +176,7 @@ export function OnePromptResultsDialog({
                     <th className="px-2 py-2">Telefonnummern</th>
                     <th className="px-2 py-2">E-Mail</th>
                     <th className="px-2 py-2">Number</th>
+                    <th className="px-2 py-2">Kosten</th>
                     <th className="px-2 py-2">Aktion</th>
                   </tr>
                 </thead>
@@ -202,6 +212,11 @@ export function OnePromptResultsDialog({
                       </td>
                       <td className="px-2 py-2 text-wa-text-secondary">
                         {result.hasPhone ? "✅ gefunden" : "❌ fehlt"}
+                      </td>
+                      <td className="px-2 py-2 tabular-nums text-wa-text-secondary">
+                        {typeof result.estimated_cost_usd === "number"
+                          ? formatAnalyzeCostUsd(result.estimated_cost_usd)
+                          : "—"}
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex flex-col gap-1">

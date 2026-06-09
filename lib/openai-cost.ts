@@ -78,3 +78,11 @@ export function formatAnalyzeCostUsd(usd: number): string {
   if (usd < 1) return `$${usd.toFixed(3)}`;
   return `$${usd.toFixed(2)}`;
 }
+
+/** Read estimated_cost_usd from analyze API payloads. */
+export function readAnalyzeCostUsd(payload: { estimated_cost_usd?: unknown } | null | undefined): number {
+  if (typeof payload?.estimated_cost_usd !== "number" || !Number.isFinite(payload.estimated_cost_usd)) {
+    return 0;
+  }
+  return payload.estimated_cost_usd;
+}

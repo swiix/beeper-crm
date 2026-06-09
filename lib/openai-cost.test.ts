@@ -3,6 +3,7 @@ import {
   buildAnalyzeUsageCostMeta,
   estimateOpenAiUsageUsd,
   formatAnalyzeCostUsd,
+  readAnalyzeCostUsd,
   zeroAnalyzeUsageCostMeta,
 } from "./openai-cost";
 
@@ -36,5 +37,13 @@ describe("formatAnalyzeCostUsd", () => {
   it("formats small amounts with extra precision", () => {
     expect(formatAnalyzeCostUsd(0.0027)).toBe("$0.0027");
     expect(formatAnalyzeCostUsd(0)).toBe("$0.00");
+  });
+});
+
+describe("readAnalyzeCostUsd", () => {
+  it("reads estimated_cost_usd from payloads", () => {
+    expect(readAnalyzeCostUsd({ estimated_cost_usd: 0.0042 })).toBe(0.0042);
+    expect(readAnalyzeCostUsd({ estimated_cost_usd: "x" })).toBe(0);
+    expect(readAnalyzeCostUsd(null)).toBe(0);
   });
 });

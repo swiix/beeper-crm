@@ -3,6 +3,7 @@ import { createLogger } from "@/lib/logger";
 import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import { beeperJson } from "@/lib/beeper";
 import { normalizePhoneValue } from "@/lib/chat-phone-search";
+import { readAnalyzeCostUsd } from "@/lib/openai-cost";
 
 const log = createLogger("api:todo-list:one-prompt-analyze");
 
@@ -28,6 +29,7 @@ type OnePromptResult = {
     due: string | null;
     priority: number | null;
   } | null;
+  estimated_cost_usd?: number;
   error?: string;
 };
 
@@ -150,6 +152,7 @@ export async function POST(request: NextRequest) {
     const results: OnePromptResult[] = [];
     let failed = 0;
     let processed = 0;
+    let totalCostUsd = 0;
 
     await runWithConcurrency(4, targets, async (target) => {
       const chatId = target.chatId.trim();
@@ -176,7 +179,10 @@ export async function POST(request: NextRequest) {
         const data = (await res.json().catch(() => ({}))) as {
           todos?: Array<{ title?: string; notes?: string | null; due?: string | null; priority?: number | string | null }>;
           error?: string;
+          estimated_cost_usd?: number;
         };
+        const chatCostUsd = readAnalyzeCostUsd(data);
+        totalCostUsd += chatCostUsd;
         if (!res.ok) {
           failed += 1;
           results.push({
@@ -191,6 +197,7 @@ export async function POST(request: NextRequest) {
             output: "",
             outputType: "text",
             todo: null,
+            estimated_cost_usd: chatCostUsd,
             error: data.error ?? "Analyse fehlgeschlagen",
           });
           return;
@@ -210,6 +217,7 @@ export async function POST(request: NextRequest) {
             output: "",
             outputType: "text",
             todo: null,
+            estimated_cost_usd: chatCostUsd,
           });
           return;
         }
@@ -234,6 +242,7 @@ export async function POST(request: NextRequest) {
             output: "",
             outputType: parsed.type,
             todo: null,
+            estimated_cost_usd: chatCostUsd,
           });
           return;
         }
@@ -258,6 +267,7 @@ export async function POST(request: NextRequest) {
             due: typeof first.due === "string" ? first.due : null,
             priority: numericPriority,
           },
+          estimated_cost_usd: chatCostUsd,
         });
       } catch (error) {
         failed += 1;
@@ -289,6 +299,7 @@ export async function POST(request: NextRequest) {
         matched: results.filter((r) => r.matched).length,
         unmatched: results.filter((r) => !r.matched).length,
         failed,
+        total_cost_usd: Number(totalCostUsd.toFixed(6)),
       },
     });
   } catch (error) {
