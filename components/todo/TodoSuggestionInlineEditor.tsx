@@ -337,15 +337,13 @@ export function TodoSuggestionInlineEditor({
       <ReclaimSyntaxControls
         value={syntaxFields}
         onChange={(patch) => {
-          setSyntaxFields((prev) => {
-            const next = { ...prev, ...patch };
-            onPersist({
-              mark_as_next: next.mark_as_next,
-              reclaim_schedule_type: next.reclaim_schedule_type,
-              reclaim_not_before: next.reclaim_not_before,
-              reclaim_no_split: next.reclaim_no_split,
-            });
-            return next;
+          const next = { ...syntaxFields, ...patch };
+          setSyntaxFields(next);
+          onPersist({
+            mark_as_next: next.mark_as_next,
+            reclaim_schedule_type: next.reclaim_schedule_type,
+            reclaim_not_before: next.reclaim_not_before,
+            reclaim_no_split: next.reclaim_no_split,
           });
         }}
       />
