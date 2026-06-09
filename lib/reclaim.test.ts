@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { durationHoursToChunks, mapCrmPriorityToReclaim } from "@/lib/reclaim";
+import { buildReclaimTaskPayload, durationHoursToChunks, mapCrmPriorityToReclaim } from "@/lib/reclaim";
 
 describe("reclaim helpers", () => {
   it("maps CRM priority to Reclaim P levels", () => {
@@ -14,5 +14,10 @@ describe("reclaim helpers", () => {
     expect(durationHoursToChunks(0.25)).toBe(1);
     expect(durationHoursToChunks(1)).toBe(4);
     expect(durationHoursToChunks(0)).toBe(1);
+  });
+
+  it("sets onDeck when markAsNext is requested", () => {
+    const payload = buildReclaimTaskPayload({ title: "Task", onDeck: true });
+    expect(payload.onDeck).toBe(true);
   });
 });

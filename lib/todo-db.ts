@@ -42,6 +42,8 @@ export interface TodoSuggestionItem {
   estimated_time_minutes?: number | null;
   /** AI-estimated time to complete in hours (e.g. 0.5, 1.5, 2). */
   estimated_time_hours?: number | null;
+  /** When accepted, sync as Up Next (Reclaim onDeck / Google upnext title prefix). */
+  mark_as_next?: boolean;
 }
 
 export interface TodoItem {

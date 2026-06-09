@@ -23,6 +23,8 @@ export type CreateReclaimTaskInput = {
   due?: string | null;
   priority?: ReclaimPriority | null;
   durationHours?: number | null;
+  /** Mark task as Up Next (on deck) in Reclaim. */
+  onDeck?: boolean;
 };
 
 export type ReclaimTaskCreated = {
@@ -153,6 +155,8 @@ export function buildReclaimTaskPayload(input: CreateReclaimTaskInput): Record<s
     payload.timeChunksRequired = durationHoursToChunks(hours);
   }
 
+  if (input.onDeck === true) payload.onDeck = true;
+
   return payload;
 }
 
@@ -170,7 +174,11 @@ export async function patchReclaimTask(reclaimTaskId: number, input: CreateRecla
   await reclaimRequest("PATCH", `/api/tasks/${reclaimTaskId}`, { body: payload });
 }
 
-export function todoToReclaimTaskInput(todo: TodoItem, defaultDurationHours?: number): CreateReclaimTaskInput {
+export function todoToReclaimTaskInput(
+  todo: TodoItem,
+  defaultDurationHours?: number,
+  options?: { markAsNext?: boolean }
+): CreateReclaimTaskInput {
   const minutes = resolveEstimatedTimeMinutes(todo.estimated_time_minutes, defaultDurationHours);
   return {
     title: todo.title,
@@ -178,5 +186,6 @@ export function todoToReclaimTaskInput(todo: TodoItem, defaultDurationHours?: nu
     due: formatReclaimDueIso(todo),
     priority: mapCrmPriorityToReclaim(todo.priority),
     durationHours: minutes / 60,
+    onDeck: options?.markAsNext ? true : undefined,
   };
 }

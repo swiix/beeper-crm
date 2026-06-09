@@ -14,6 +14,7 @@ import {
   syncDueDateFromDateTime,
   type DueDateTime,
 } from "@/lib/due-datetime";
+import { SuggestionNextToggle } from "@/components/todo/SuggestionNextToggle";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
 
 export type SuggestionEditFocus = "title" | "due" | "notes";
@@ -46,6 +47,7 @@ export function TodoSuggestionInlineEditor({
   );
   const [duePickerOpen, setDuePickerOpen] = useState(false);
   const [notes, setNotes] = useState(() => suggestion.notes?.trim() ?? "");
+  const [markAsNext, setMarkAsNext] = useState(() => suggestion.mark_as_next === true);
   const [hoursStr, setHoursStr] = useState(() => {
     if (suggestion.estimated_time_hours != null) return String(suggestion.estimated_time_hours);
     if (suggestion.estimated_time_minutes != null) {
@@ -58,6 +60,7 @@ export function TodoSuggestionInlineEditor({
     setTitle(suggestion.title);
     setDueDateTime(suggestionDueToDateTime(suggestion.due, suggestion.due_time));
     setNotes(suggestion.notes?.trim() ?? "");
+    setMarkAsNext(suggestion.mark_as_next === true);
     if (suggestion.estimated_time_hours != null) setHoursStr(String(suggestion.estimated_time_hours));
     else if (suggestion.estimated_time_minutes != null) {
       setHoursStr(String(Number((suggestion.estimated_time_minutes / 60).toFixed(2))));
@@ -67,6 +70,7 @@ export function TodoSuggestionInlineEditor({
     suggestion.due,
     suggestion.due_time,
     suggestion.notes,
+    suggestion.mark_as_next,
     suggestion.estimated_time_hours,
     suggestion.estimated_time_minutes,
   ]);
@@ -104,6 +108,10 @@ export function TodoSuggestionInlineEditor({
     if (n !== (suggestion.notes ?? null)) onPersist({ notes: n });
 
     flushDurationIntoParent();
+
+    if (markAsNext !== (suggestion.mark_as_next === true)) {
+      onPersist({ mark_as_next: markAsNext });
+    }
   }, [
     title,
     dueDateTime,
@@ -112,6 +120,8 @@ export function TodoSuggestionInlineEditor({
     suggestion.due,
     suggestion.due_time,
     suggestion.notes,
+    suggestion.mark_as_next,
+    markAsNext,
     onPersist,
     flushDurationIntoParent,
   ]);
@@ -137,8 +147,9 @@ export function TodoSuggestionInlineEditor({
       notes: n,
       estimated_time_minutes,
       estimated_time_hours,
+      mark_as_next: markAsNext,
     };
-  }, [title, dueDateTime, notes, hoursStr, suggestion]);
+  }, [title, dueDateTime, notes, hoursStr, markAsNext, suggestion]);
 
   const persistFieldsAndClose = useCallback(() => {
     persistAllFields();
@@ -301,6 +312,15 @@ export function TodoSuggestionInlineEditor({
           }}
           onKeyDown={onEnterSaveInput}
           className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-wa-text-primary"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <SuggestionNextToggle
+          active={markAsNext}
+          onChange={(next) => {
+            setMarkAsNext(next);
+            onPersist({ mark_as_next: next });
+          }}
         />
       </div>
       {!embedded && (

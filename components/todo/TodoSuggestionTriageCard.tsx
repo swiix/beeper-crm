@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { DueDatePicker } from "@/components/DueDatePicker";
 import { RichTextNotes } from "@/components/RichTextNotes";
+import { SuggestionNextToggle } from "@/components/todo/SuggestionNextToggle";
 import type { EditableTodoSuggestion } from "@/components/todo/TodoSuggestionInlineEditor";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
 
@@ -154,6 +155,7 @@ export function TodoSuggestionTriageCard({
   const [dueDraft, setDueDraft] = useState<DueDateTime>(() =>
     suggestionDueToDateTime(suggestion.due, suggestion.due_time)
   );
+  const [markAsNext, setMarkAsNext] = useState(() => suggestion.mark_as_next === true);
   const [hoursDraft, setHoursDraft] = useState(() => {
     if (suggestion.estimated_time_hours != null) return String(suggestion.estimated_time_hours);
     if (suggestion.estimated_time_minutes != null) {
@@ -167,6 +169,7 @@ export function TodoSuggestionTriageCard({
     setNotesDraft(suggestion.notes?.trim() ?? "");
     setChatDraft(item.chatName);
     setDueDraft(suggestionDueToDateTime(suggestion.due, suggestion.due_time));
+    setMarkAsNext(suggestion.mark_as_next === true);
     if (suggestion.estimated_time_hours != null) setHoursDraft(String(suggestion.estimated_time_hours));
     else if (suggestion.estimated_time_minutes != null) {
       setHoursDraft(String(Number((suggestion.estimated_time_minutes / 60).toFixed(2))));
@@ -179,6 +182,7 @@ export function TodoSuggestionTriageCard({
     suggestion.due,
     suggestion.due_time,
     suggestion.notes,
+    suggestion.mark_as_next,
     suggestion.estimated_time_hours,
     suggestion.estimated_time_minutes,
   ]);
@@ -484,6 +488,17 @@ export function TodoSuggestionTriageCard({
           </TriageFieldShell>
         )}
       </div>
+      {canEdit && (
+        <div className="border-t border-wa-border/50 px-3 py-2.5">
+          <SuggestionNextToggle
+            active={markAsNext}
+            onChange={(next) => {
+              setMarkAsNext(next);
+              onPersistSuggestion?.(item, { mark_as_next: next });
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

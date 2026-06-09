@@ -2,6 +2,7 @@ import { createLogger } from "@/lib/logger";
 import { updateTodo, type TodoItem } from "@/lib/todo-db";
 import { appendGoogleTaskCreateLog } from "@/lib/google-tasks-create-log";
 import { buildReclaimTaskTitle } from "@/lib/reclaim-task-syntax";
+import { applyGoogleNextTitle } from "@/lib/todo-sync-next";
 import { resolveEstimatedTimeMinutes } from "@/lib/todo-duration";
 import { getGoogleTasksConnectionStatus, insertGoogleTask } from "@/lib/google-tasks";
 
@@ -14,7 +15,10 @@ export type SyncTodoToGoogleTasksResult =
 /**
  * Sync a CRM todo to Google Tasks. Idempotent when already synced.
  */
-export async function syncTodoToGoogleTasks(todo: TodoItem): Promise<SyncTodoToGoogleTasksResult> {
+export async function syncTodoToGoogleTasks(
+  todo: TodoItem,
+  options?: { markAsNext?: boolean }
+): Promise<SyncTodoToGoogleTasksResult> {
   const status = getGoogleTasksConnectionStatus();
   if (!status.connected) {
     return { ok: false, error: "Google Tasks is not connected. Please connect first." };
@@ -32,7 +36,7 @@ export async function syncTodoToGoogleTasks(todo: TodoItem): Promise<SyncTodoToG
   try {
     const effectiveMinutes = resolveEstimatedTimeMinutes(todo.estimated_time_minutes);
     const reclaimTitle = buildReclaimTaskTitle({
-      title: todo.title,
+      title: applyGoogleNextTitle(todo.title, options?.markAsNext === true),
       due_date: todo.due_date,
       priority: todo.priority,
       estimated_time_minutes: effectiveMinutes,

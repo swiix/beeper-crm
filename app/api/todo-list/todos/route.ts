@@ -20,6 +20,10 @@ function parsePriority(v: unknown): number | null {
   return null;
 }
 
+function parseMarkAsNext(raw: unknown): boolean {
+  return raw === true || raw === 1 || raw === "true" || raw === "1";
+}
+
 function parseEstimatedTimeMinutes(raw: unknown, defaultHours: number): number {
   if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
     return Math.round(raw);
@@ -110,7 +114,9 @@ export async function POST(request: NextRequest) {
           });
           if (result) {
             inserted.push(result.todo);
-            const syncMeta = await maybeAutoSyncTodoOnAccept(result.todo);
+            const syncMeta = await maybeAutoSyncTodoOnAccept(result.todo, {
+              markAsNext: parseMarkAsNext(t.mark_as_next),
+            });
             if (syncMeta?.ok) syncSynced += 1;
             else if (syncMeta && !syncMeta.ok) syncFailed += 1;
           } else skipped.push({ title: t.title });
@@ -158,7 +164,9 @@ export async function POST(request: NextRequest) {
         skipDuplicates,
       });
       if (result) {
-        const externalSync = await maybeAutoSyncTodoOnAccept(result.todo);
+        const externalSync = await maybeAutoSyncTodoOnAccept(result.todo, {
+          markAsNext: parseMarkAsNext(body?.mark_as_next),
+        });
         const payload: Record<string, unknown> = { ...result.todo };
         if (externalSync != null) payload.externalSync = externalSync;
         return NextResponse.json(payload, { status: 201 });

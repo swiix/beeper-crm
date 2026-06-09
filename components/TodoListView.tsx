@@ -107,6 +107,7 @@ type TodoSuggestionItem = {
   category?: string | null;
   estimated_time_minutes?: number | null;
   estimated_time_hours?: number | null;
+  mark_as_next?: boolean;
 };
 
 type TodoItem = {
@@ -1988,6 +1989,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           priority: typeof item.priority === "number" ? item.priority : undefined,
           notes: item.notes ?? undefined,
           estimated_time_minutes: item.estimated_time_minutes ?? undefined,
+          mark_as_next: item.mark_as_next === true ? true : undefined,
           list_id: listIdFilter ?? undefined,
           source_chat_id: sid ?? undefined,
           source_chat_name: sname ?? undefined,

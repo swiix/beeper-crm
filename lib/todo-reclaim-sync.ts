@@ -17,7 +17,10 @@ export type SyncTodoToReclaimResult =
 /**
  * Sync a CRM todo to Reclaim via HTTP API. Idempotent when already synced.
  */
-export async function syncTodoToReclaim(todo: TodoItem): Promise<SyncTodoToReclaimResult> {
+export async function syncTodoToReclaim(
+  todo: TodoItem,
+  options?: { markAsNext?: boolean }
+): Promise<SyncTodoToReclaimResult> {
   const localStatus = getReclaimConnectionStatus();
   if (!localStatus.connected) {
     return { ok: false, error: "Reclaim is not connected. Add an API token in Settings." };
@@ -39,7 +42,9 @@ export async function syncTodoToReclaim(todo: TodoItem): Promise<SyncTodoToRecla
 
   try {
     const settings = readTodoSettings();
-    const input = todoToReclaimTaskInput(todo, settings.todoListDefaultDurationHours);
+    const input = todoToReclaimTaskInput(todo, settings.todoListDefaultDurationHours, {
+      markAsNext: options?.markAsNext,
+    });
     const created = await createReclaimTask(input);
     const syncAt = Date.now();
     updateTodo(todo.id, {
