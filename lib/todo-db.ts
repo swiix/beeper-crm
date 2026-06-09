@@ -4,9 +4,10 @@
 
 import { getDb } from "@/lib/db";
 import { DEFAULT_DUE_TIME, dueDateTimeToMs, msToDueDateTime, syncDueDateFromDateTime, type DueDateTime } from "@/lib/due-datetime";
+import { scheduleTypeFromCategory } from "@/lib/reclaim-task-syntax";
 
 export const TODO_ITEM_SELECT =
-  "id, title, notes, due_date, due_at, completed, archived, priority, sort_order, list_id, source_chat_id, source_chat_name, source_account_id, created_at, updated_at, reminder_at, snoozed, pinned, estimated_time_minutes, external_google_task_id, google_sync_at, external_reclaim_task_id, reclaim_sync_at";
+  "id, title, notes, due_date, due_at, completed, archived, priority, sort_order, list_id, source_chat_id, source_chat_name, source_account_id, created_at, updated_at, reminder_at, snoozed, pinned, estimated_time_minutes, external_google_task_id, google_sync_at, external_reclaim_task_id, reclaim_sync_at, sync_upnext, sync_schedule_type, sync_not_before, sync_no_split";
 
 function resolveDueFields(data: {
   due_date?: string | null;
@@ -42,8 +43,11 @@ export interface TodoSuggestionItem {
   estimated_time_minutes?: number | null;
   /** AI-estimated time to complete in hours (e.g. 0.5, 1.5, 2). */
   estimated_time_hours?: number | null;
-  /** When accepted, sync as Up Next (Reclaim onDeck / Google upnext title prefix). */
+  /** When accepted, sync as Up Next (Reclaim onDeck / Google upnext syntax). */
   mark_as_next?: boolean;
+  reclaim_schedule_type?: "work" | "personal" | null;
+  reclaim_not_before?: string | null;
+  reclaim_no_split?: boolean;
 }
 
 export interface TodoItem {
@@ -79,6 +83,14 @@ export interface TodoItem {
   external_reclaim_task_id: string | null;
   /** Epoch ms of the last successful Reclaim sync. */
   reclaim_sync_at: number | null;
+  /** Google Tasks / Reclaim title syntax: upnext token. */
+  sync_upnext: number;
+  /** Google Tasks / Reclaim title syntax: type work|personal. */
+  sync_schedule_type: string | null;
+  /** Google Tasks / Reclaim title syntax: not before YYYY-MM-DD. */
+  sync_not_before: string | null;
+  /** Google Tasks / Reclaim title syntax: nosplit token. */
+  sync_no_split: number;
 }
 
 export interface TodoListRecord {
@@ -414,6 +426,11 @@ export function createTodo(data: {
   source_account_id?: string | null;
   estimated_time_minutes?: number | null;
   skipDuplicates?: boolean;
+  mark_as_next?: boolean;
+  reclaim_schedule_type?: "work" | "personal" | null;
+  reclaim_not_before?: string | null;
+  reclaim_no_split?: boolean;
+  category?: string | null;
 }): { todo: TodoItem; duplicate: boolean } | null {
   const dup = findDuplicateTodo(data.title, data.source_chat_id);
   if (dup && data.skipDuplicates) return null;
@@ -427,8 +444,8 @@ export function createTodo(data: {
   const due_date = dueResolved?.due_date ?? data.due_date ?? null;
   const due_at = dueResolved?.due_at ?? data.due_at ?? null;
   db.prepare(
-    `INSERT INTO todos (id, title, notes, due_date, due_at, completed, archived, priority, sort_order, list_id, source_chat_id, source_chat_name, source_account_id, created_at, updated_at, reminder_at, snoozed, pinned, estimated_time_minutes, external_google_task_id, google_sync_at, external_reclaim_task_id, reclaim_sync_at)
-     VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, NULL, NULL, NULL, NULL)`
+    `INSERT INTO todos (id, title, notes, due_date, due_at, completed, archived, priority, sort_order, list_id, source_chat_id, source_chat_name, source_account_id, created_at, updated_at, reminder_at, snoozed, pinned, estimated_time_minutes, external_google_task_id, google_sync_at, external_reclaim_task_id, reclaim_sync_at, sync_upnext, sync_schedule_type, sync_not_before, sync_no_split)
+     VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`
   ).run(
     data.id,
     data.title.trim(),
@@ -444,7 +461,11 @@ export function createTodo(data: {
     t,
     t,
     null,
-    estMin
+    estMin,
+    data.mark_as_next ? 1 : 0,
+    data.reclaim_schedule_type ?? scheduleTypeFromCategory(data.category) ?? null,
+    data.reclaim_not_before ?? null,
+    data.reclaim_no_split ? 1 : 0
   );
   const row = db.prepare(`SELECT ${TODO_ITEM_SELECT} FROM todos WHERE id = ?`).get(data.id) as TodoItem;
   return { todo: row, duplicate: false };

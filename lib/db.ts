@@ -197,6 +197,26 @@ function initSchema(database: Database.Database): void {
     // column may already exist
   }
   try {
+    database.exec("ALTER TABLE todos ADD COLUMN sync_upnext INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // column may already exist
+  }
+  try {
+    database.exec("ALTER TABLE todos ADD COLUMN sync_schedule_type TEXT");
+  } catch {
+    // column may already exist
+  }
+  try {
+    database.exec("ALTER TABLE todos ADD COLUMN sync_not_before TEXT");
+  } catch {
+    // column may already exist
+  }
+  try {
+    database.exec("ALTER TABLE todos ADD COLUMN sync_no_split INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // column may already exist
+  }
+  try {
     const rows = database
       .prepare("SELECT id, due_date FROM todos WHERE due_date IS NOT NULL AND due_at IS NULL")
       .all() as { id: string; due_date: string }[];

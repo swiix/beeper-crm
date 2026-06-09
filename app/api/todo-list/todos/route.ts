@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger";
 import { getTodos, createTodo, type GetTodosFilters, type TodoItem } from "@/lib/todo-db";
 import { readTodoSettings } from "@/lib/todo-settings";
+import { parseReclaimSyntaxFromRecord } from "@/lib/reclaim-task-syntax";
 import { resolveEstimatedTimeMinutes } from "@/lib/todo-duration";
 import { parseDueFieldsFromBody } from "@/lib/due-datetime";
 import { maybeAutoSyncTodoOnAccept } from "@/lib/todo-auto-sync";
@@ -22,6 +23,10 @@ function parsePriority(v: unknown): number | null {
 
 function parseMarkAsNext(raw: unknown): boolean {
   return raw === true || raw === 1 || raw === "true" || raw === "1";
+}
+
+function reclaimSyntaxFromBody(raw: Record<string, unknown>) {
+  return parseReclaimSyntaxFromRecord(raw);
 }
 
 function parseEstimatedTimeMinutes(raw: unknown, defaultHours: number): number {
@@ -97,6 +102,7 @@ export async function POST(request: NextRequest) {
         });
         const priority = parsePriority(t.priority);
         const estimated_time_minutes = parseEstimatedTimeMinutes(t.estimated_time_minutes, defaultDurationHours);
+        const syntax = reclaimSyntaxFromBody(t as Record<string, unknown>);
         try {
           const result = createTodo({
             id,
@@ -111,12 +117,11 @@ export async function POST(request: NextRequest) {
             source_account_id: typeof t.source_account_id === "string" ? t.source_account_id : null,
             estimated_time_minutes,
             skipDuplicates,
+            ...syntax,
           });
           if (result) {
             inserted.push(result.todo);
-            const syncMeta = await maybeAutoSyncTodoOnAccept(result.todo, {
-              markAsNext: parseMarkAsNext(t.mark_as_next),
-            });
+            const syncMeta = await maybeAutoSyncTodoOnAccept(result.todo);
             if (syncMeta?.ok) syncSynced += 1;
             else if (syncMeta && !syncMeta.ok) syncFailed += 1;
           } else skipped.push({ title: t.title });
@@ -147,6 +152,7 @@ export async function POST(request: NextRequest) {
     const priority = parsePriority(body?.priority);
 
     const estimated_time_minutes = parseEstimatedTimeMinutes(body?.estimated_time_minutes, defaultDurationHours);
+    const syntax = reclaimSyntaxFromBody(body as Record<string, unknown>);
     try {
       const result = createTodo({
         id,
@@ -162,11 +168,10 @@ export async function POST(request: NextRequest) {
         source_account_id: typeof body?.source_account_id === "string" ? body.source_account_id : null,
         estimated_time_minutes,
         skipDuplicates,
+        ...syntax,
       });
       if (result) {
-        const externalSync = await maybeAutoSyncTodoOnAccept(result.todo, {
-          markAsNext: parseMarkAsNext(body?.mark_as_next),
-        });
+        const externalSync = await maybeAutoSyncTodoOnAccept(result.todo);
         const payload: Record<string, unknown> = { ...result.todo };
         if (externalSync != null) payload.externalSync = externalSync;
         return NextResponse.json(payload, { status: 201 });

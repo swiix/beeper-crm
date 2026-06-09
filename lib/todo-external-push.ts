@@ -1,7 +1,7 @@
 import { createLogger } from "@/lib/logger";
 import { patchGoogleTask } from "@/lib/google-tasks";
 import { patchReclaimTask } from "@/lib/reclaim";
-import { buildReclaimTaskTitle } from "@/lib/reclaim-task-syntax";
+import { buildReclaimTaskTitle, todoItemToReclaimSyntaxInput } from "@/lib/reclaim-task-syntax";
 import { getConfiguredTodoSyncTarget } from "@/lib/todo-auto-sync";
 import { resolveEstimatedTimeMinutes } from "@/lib/todo-duration";
 import { readTodoSettings } from "@/lib/todo-settings";
@@ -23,12 +23,7 @@ export async function pushTodoChangesToExternal(todo: TodoItem): Promise<PushTod
     if (!todo.external_google_task_id) return null;
     try {
       const minutes = resolveEstimatedTimeMinutes(todo.estimated_time_minutes, settings.todoListDefaultDurationHours);
-      const title = buildReclaimTaskTitle({
-        title: todo.title,
-        due_date: todo.due_date,
-        priority: todo.priority,
-        estimated_time_minutes: minutes,
-      });
+      const title = buildReclaimTaskTitle(todoItemToReclaimSyntaxInput(todo, minutes));
       await patchGoogleTask(todo.external_google_task_id, {
         title,
         notes: todo.notes,
@@ -47,7 +42,9 @@ export async function pushTodoChangesToExternal(todo: TodoItem): Promise<PushTod
   const reclaimId = parseInt(todo.external_reclaim_task_id, 10);
   if (!Number.isFinite(reclaimId)) return null;
   try {
-    const input = todoToReclaimTaskInput(todo, settings.todoListDefaultDurationHours);
+    const input = todoToReclaimTaskInput(todo, settings.todoListDefaultDurationHours, {
+      markAsNext: todo.sync_upnext === 1,
+    });
     await patchReclaimTask(reclaimId, input);
     return { ok: true };
   } catch (e) {

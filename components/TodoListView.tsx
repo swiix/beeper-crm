@@ -3461,30 +3461,28 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               </ul>
             </div>
           ) : (
-            <p className="text-sm text-wa-text-secondary">
-              <div className="space-y-2 text-sm text-wa-text-secondary">
-                <p>Keine Vorschläge für diesen Chat.</p>
-                <button
-                  type="button"
-                  onClick={handleSingleAnalyzeClick}
-                  className="rounded-lg bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-                >
-                  Erneut analysieren
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    openAnalyzeSettingsModal("single", {
-                      chat: selectedChat ?? undefined,
-                      presetId: "force_refresh",
-                    })
-                  }
-                  className="block text-xs text-wa-text-secondary underline"
-                >
-                  Cache ignorieren (Einstellungen)
-                </button>
-              </div>
-            </p>
+            <div className="space-y-2 text-sm text-wa-text-secondary">
+              <p>Keine Vorschläge für diesen Chat.</p>
+              <button
+                type="button"
+                onClick={handleSingleAnalyzeClick}
+                className="rounded-lg bg-wa-green px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+              >
+                Erneut analysieren
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  openAnalyzeSettingsModal("single", {
+                    chat: selectedChat ?? undefined,
+                    presetId: "force_refresh",
+                  })
+                }
+                className="block text-xs text-wa-text-secondary underline"
+              >
+                Cache ignorieren (Einstellungen)
+              </button>
+            </div>
           )}
         </TodoGlassPanelScroll>
       </TodoGlassPanel>

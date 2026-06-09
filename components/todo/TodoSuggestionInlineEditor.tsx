@@ -14,8 +14,10 @@ import {
   syncDueDateFromDateTime,
   type DueDateTime,
 } from "@/lib/due-datetime";
-import { SuggestionNextToggle } from "@/components/todo/SuggestionNextToggle";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
+import { ReclaimSyntaxControls } from "@/components/todo/ReclaimSyntaxControls";
+import type { ReclaimSyntaxFields } from "@/lib/reclaim-task-syntax";
+import { suggestionToSyntaxFields } from "@/lib/reclaim-task-syntax";
 
 export type SuggestionEditFocus = "title" | "due" | "notes";
 
@@ -47,7 +49,12 @@ export function TodoSuggestionInlineEditor({
   );
   const [duePickerOpen, setDuePickerOpen] = useState(false);
   const [notes, setNotes] = useState(() => suggestion.notes?.trim() ?? "");
-  const [markAsNext, setMarkAsNext] = useState(() => suggestion.mark_as_next === true);
+  const [syntaxFields, setSyntaxFields] = useState<ReclaimSyntaxFields>(() => ({
+    mark_as_next: suggestion.mark_as_next === true,
+    reclaim_schedule_type: suggestion.reclaim_schedule_type ?? null,
+    reclaim_not_before: suggestion.reclaim_not_before ?? null,
+    reclaim_no_split: suggestion.reclaim_no_split === true,
+  }));
   const [hoursStr, setHoursStr] = useState(() => {
     if (suggestion.estimated_time_hours != null) return String(suggestion.estimated_time_hours);
     if (suggestion.estimated_time_minutes != null) {
@@ -60,7 +67,7 @@ export function TodoSuggestionInlineEditor({
     setTitle(suggestion.title);
     setDueDateTime(suggestionDueToDateTime(suggestion.due, suggestion.due_time));
     setNotes(suggestion.notes?.trim() ?? "");
-    setMarkAsNext(suggestion.mark_as_next === true);
+    setSyntaxFields(suggestionToSyntaxFields(suggestion));
     if (suggestion.estimated_time_hours != null) setHoursStr(String(suggestion.estimated_time_hours));
     else if (suggestion.estimated_time_minutes != null) {
       setHoursStr(String(Number((suggestion.estimated_time_minutes / 60).toFixed(2))));
@@ -71,6 +78,9 @@ export function TodoSuggestionInlineEditor({
     suggestion.due_time,
     suggestion.notes,
     suggestion.mark_as_next,
+    suggestion.reclaim_schedule_type,
+    suggestion.reclaim_not_before,
+    suggestion.reclaim_no_split,
     suggestion.estimated_time_hours,
     suggestion.estimated_time_minutes,
   ]);
@@ -109,19 +119,26 @@ export function TodoSuggestionInlineEditor({
 
     flushDurationIntoParent();
 
-    if (markAsNext !== (suggestion.mark_as_next === true)) {
-      onPersist({ mark_as_next: markAsNext });
+    const currentSyntax = suggestionToSyntaxFields(suggestion);
+    if (
+      syntaxFields.mark_as_next !== currentSyntax.mark_as_next ||
+      syntaxFields.reclaim_schedule_type !== currentSyntax.reclaim_schedule_type ||
+      syntaxFields.reclaim_not_before !== currentSyntax.reclaim_not_before ||
+      syntaxFields.reclaim_no_split !== currentSyntax.reclaim_no_split
+    ) {
+      onPersist({
+        mark_as_next: syntaxFields.mark_as_next,
+        reclaim_schedule_type: syntaxFields.reclaim_schedule_type,
+        reclaim_not_before: syntaxFields.reclaim_not_before,
+        reclaim_no_split: syntaxFields.reclaim_no_split,
+      });
     }
   }, [
     title,
     dueDateTime,
     notes,
-    suggestion.title,
-    suggestion.due,
-    suggestion.due_time,
-    suggestion.notes,
-    suggestion.mark_as_next,
-    markAsNext,
+    suggestion,
+    syntaxFields,
     onPersist,
     flushDurationIntoParent,
   ]);
@@ -147,9 +164,12 @@ export function TodoSuggestionInlineEditor({
       notes: n,
       estimated_time_minutes,
       estimated_time_hours,
-      mark_as_next: markAsNext,
+      mark_as_next: syntaxFields.mark_as_next,
+      reclaim_schedule_type: syntaxFields.reclaim_schedule_type,
+      reclaim_not_before: syntaxFields.reclaim_not_before,
+      reclaim_no_split: syntaxFields.reclaim_no_split,
     };
-  }, [title, dueDateTime, notes, hoursStr, markAsNext, suggestion]);
+  }, [title, dueDateTime, notes, hoursStr, syntaxFields, suggestion]);
 
   const persistFieldsAndClose = useCallback(() => {
     persistAllFields();
@@ -314,15 +334,21 @@ export function TodoSuggestionInlineEditor({
           className="mt-0.5 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-wa-text-primary"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <SuggestionNextToggle
-          active={markAsNext}
-          onChange={(next) => {
-            setMarkAsNext(next);
-            onPersist({ mark_as_next: next });
-          }}
-        />
-      </div>
+      <ReclaimSyntaxControls
+        value={syntaxFields}
+        onChange={(patch) => {
+          setSyntaxFields((prev) => {
+            const next = { ...prev, ...patch };
+            onPersist({
+              mark_as_next: next.mark_as_next,
+              reclaim_schedule_type: next.reclaim_schedule_type,
+              reclaim_not_before: next.reclaim_not_before,
+              reclaim_no_split: next.reclaim_no_split,
+            });
+            return next;
+          });
+        }}
+      />
       {!embedded && (
         <div className="flex flex-wrap gap-2">
           <button
