@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { DueDatePicker } from "@/components/DueDatePicker";
+import { RichTextNotes } from "@/components/RichTextNotes";
 import type { EditableTodoSuggestion } from "@/components/todo/TodoSuggestionInlineEditor";
 import type { TodoSuggestionItem } from "@/lib/todo-db";
 
@@ -428,9 +429,12 @@ export function TodoSuggestionTriageCard({
               className="w-full resize-y rounded-lg border border-wa-border bg-wa-input-bg px-2.5 py-2 text-sm text-wa-text-primary focus:border-wa-green focus:outline-none"
             />
           ) : notesDraft ? (
-            <p className="line-clamp-4 whitespace-pre-wrap text-sm leading-relaxed text-wa-text-secondary">
-              {notesDraft}
-            </p>
+            <RichTextNotes
+              text={notesDraft}
+              showIcon={false}
+              className="line-clamp-4 text-sm leading-relaxed text-wa-text-secondary"
+              onActivate={() => activate("notes")}
+            />
           ) : (
             <p className="text-sm italic text-wa-text-secondary">Notizen hinzufügen…</p>
           )}

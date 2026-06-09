@@ -253,6 +253,10 @@ body {
     border-color: rgb(var(--tg-border) / 0.25);
   }
 
+  .tg-rich-text a {
+    @apply text-wa-green underline hover:opacity-80;
+  }
+
   .tg-chip-active {
     @apply border-wa-green/40 bg-wa-green/15 text-wa-text-primary;
   }

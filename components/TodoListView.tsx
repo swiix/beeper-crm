@@ -27,6 +27,7 @@ import {
 } from "@/lib/todo-completion-undo";
 import { OnePromptResultsDialog } from "@/components/OnePromptResultsDialog";
 import { DueDatePicker } from "@/components/DueDatePicker";
+import { RichTextNotes } from "@/components/RichTextNotes";
 import { TodoSyncBadge } from "@/components/todo/TodoSyncBadge";
 import {
   buildAnalyzeRequestFields,
@@ -3105,14 +3106,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                               </div>
                             )}
                             {s.notes ? (
-                              <button
-                                type="button"
-                                onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
-                                className="mt-1 block max-w-full whitespace-pre-wrap break-words text-left text-wa-text-secondary hover:underline"
+                              <RichTextNotes
+                                text={s.notes}
+                                className="mt-1 text-sm text-wa-text-secondary"
                                 title="Details bearbeiten (Shift+Enter = Zeilenumbruch)"
-                              >
-                                📝 {s.notes}
-                              </button>
+                                onActivate={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
+                              />
                             ) : (
                               <button
                                 type="button"
@@ -3247,14 +3246,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                                 </div>
                               )}
                               {s.notes ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
-                                  className="mt-1 block max-w-full whitespace-pre-wrap break-words text-left text-wa-text-secondary hover:underline"
+                                <RichTextNotes
+                                  text={s.notes}
+                                  className="mt-1 text-sm text-wa-text-secondary"
                                   title="Details bearbeiten"
-                                >
-                                  📝 {s.notes}
-                                </button>
+                                  onActivate={() => setEditingSuggestion({ chatId, index: indexInChat, focus: "notes" })}
+                                />
                               ) : (
                                 <button
                                   type="button"
@@ -3400,13 +3397,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                               </div>
                             )}
                             {s.notes ? (
-                              <button
-                                type="button"
-                                onClick={() => selectedChatId && setEditingSuggestion({ chatId: selectedChatId, index: i, focus: "notes" })}
-                                className="mt-1 block max-w-full whitespace-pre-wrap break-words text-left text-wa-text-secondary hover:underline"
-                              >
-                                📝 {s.notes}
-                              </button>
+                              <RichTextNotes
+                                text={s.notes}
+                                className="mt-1 text-sm text-wa-text-secondary"
+                                onActivate={() =>
+                                  selectedChatId && setEditingSuggestion({ chatId: selectedChatId, index: i, focus: "notes" })
+                                }
+                              />
                             ) : (
                               <button
                                 type="button"
@@ -3818,9 +3815,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     </button>
                   )}
                   {todo.notes && (
-                    <div className="mt-0.5 max-w-full whitespace-pre-wrap break-words text-wa-text-secondary">
-                      📝 {todo.notes}
-                    </div>
+                    <RichTextNotes
+                      text={todo.notes}
+                      className="mt-0.5 text-sm text-wa-text-secondary"
+                    />
                   )}
                 </div>
                 {editingNotesId === todo.id && (
