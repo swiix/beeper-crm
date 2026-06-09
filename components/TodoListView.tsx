@@ -90,6 +90,7 @@ import {
   type TodoWorkMode,
 } from "@/lib/todo-work-mode";
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
+import { isEditableKeyboardTarget } from "@/lib/is-editable-keyboard-target";
 import {
   dueDateTimeToMs,
   formatDueDateTimeRelative,
@@ -432,6 +433,8 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   /** Multi-selection (Shift+click range). Empty when only single selection. */
   const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
   const lastClickedIndexRef = useRef<number | null>(null);
+  /** Chat id under the pointer in the suggestions list (for C shortcut in multi-chat views). */
+  const hoveredSuggestionChatIdRef = useRef<string | null>(null);
   const { data: ignoredChatsData, mutate: mutateIgnoredChats } = useSWR<{ chatIds: string[] }>(
     "todo-ignored-chats",
     () => fetch("/api/settings/todo-ignored-chats").then((r) => r.json()),
@@ -1207,6 +1210,42 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  const resolveSuggestionJumpChatId = useCallback((): string | null => {
+    if (hoveredSuggestionChatIdRef.current) return hoveredSuggestionChatIdRef.current;
+    if (selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL) return selectedChatId;
+    return null;
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "c") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isEditableKeyboardTarget(e.target)) return;
+      if (commandPaletteOpen || showAnalyzeSettingsModal || onePromptDialogOpen) return;
+      if (editingSuggestion) return;
+      if (triageEnabled && leftTab !== "dashboard" && triageQueue.length > 0) return;
+
+      const chatId = resolveSuggestionJumpChatId();
+      if (!chatId || !accountId) return;
+
+      e.preventDefault();
+      onOpenChat(chatId, accountId);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    accountId,
+    commandPaletteOpen,
+    editingSuggestion,
+    leftTab,
+    onOpenChat,
+    onePromptDialogOpen,
+    resolveSuggestionJumpChatId,
+    showAnalyzeSettingsModal,
+    triageEnabled,
+    triageQueue.length,
+  ]);
 
   const resolveModalChatIds = useCallback((): string[] => {
     if (modalTargetChatIds.length > 0) return modalTargetChatIds;
@@ -2947,7 +2986,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               </div>
             </>
           ) : (
-            <h2 className="text-sm font-semibold text-wa-text-primary">Vorschläge</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-wa-text-primary">Vorschläge</h2>
+              {accountId && !(triageEnabled && triageQueue.length > 0) && (
+                <p className="mt-0.5 text-[11px] text-wa-text-secondary">C zum Chat springen</p>
+              )}
+            </div>
           )}
           {loadingAllSuggestions && loadingAllProgress && (
             <p className="mt-1 text-xs font-medium text-wa-text-secondary">
@@ -3043,6 +3087,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   return (
                     <li
                       key={`${chatId}-${indexInChat}-${idx}`}
+                      onMouseEnter={() => {
+                        hoveredSuggestionChatIdRef.current = chatId;
+                      }}
+                      onMouseLeave={() => {
+                        if (hoveredSuggestionChatIdRef.current === chatId) {
+                          hoveredSuggestionChatIdRef.current = null;
+                        }
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setChatContextMenu(null);
@@ -3190,6 +3242,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     return (
                       <li
                         key={`all-${chatId}-${indexInChat}-${idx}`}
+                        onMouseEnter={() => {
+                          hoveredSuggestionChatIdRef.current = chatId;
+                        }}
+                        onMouseLeave={() => {
+                          if (hoveredSuggestionChatIdRef.current === chatId) {
+                            hoveredSuggestionChatIdRef.current = null;
+                          }
+                        }}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setChatContextMenu(null);
@@ -3357,6 +3417,20 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   return (
                     <li
                       key={`${s.title}-${i}`}
+                      onMouseEnter={() => {
+                        if (selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL) {
+                          hoveredSuggestionChatIdRef.current = selectedChatId;
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        if (
+                          selectedChatId &&
+                          selectedChatId !== ALL_CHATS_SENTINEL &&
+                          hoveredSuggestionChatIdRef.current === selectedChatId
+                        ) {
+                          hoveredSuggestionChatIdRef.current = null;
+                        }
+                      }}
                       onContextMenu={(e) => {
                         if (!selectedChatId || selectedChatId === ALL_CHATS_SENTINEL) return;
                         e.preventDefault();

@@ -25,7 +25,7 @@ export function SuggestionJumpToChatButton({
   if (!accountId) return null;
 
   const label = chatName ? `Chat: ${chatName}` : "Zum Chat";
-  const title = "Zum Chat springen (in neuem Tab öffnen)";
+  const title = "Zum Chat springen (in neuem Tab öffnen, C)";
 
   if (variant === "chip") {
     return (
@@ -77,6 +77,7 @@ export function SuggestionJumpToChatButton({
       )}
     >
       Chat
+      <span className="ml-1 hidden text-[10px] opacity-60 sm:inline">C</span>
     </button>
   );
 }

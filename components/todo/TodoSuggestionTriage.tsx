@@ -10,6 +10,7 @@ import {
 import type { TodoSuggestionItem } from "@/lib/todo-db";
 import { sortTodoChatIds } from "@/lib/todo-chat-sort";
 import type { BeeperChat } from "@/lib/types";
+import { isEditableKeyboardTarget } from "@/lib/is-editable-keyboard-target";
 
 export type { TriageQueueItem };
 
@@ -82,7 +83,8 @@ export function TodoSuggestionTriage({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (editingField) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isEditableKeyboardTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === "j" || k === "arrowleft") {
         e.preventDefault();
