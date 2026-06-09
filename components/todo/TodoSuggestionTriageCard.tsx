@@ -28,6 +28,7 @@ type TodoSuggestionTriageCardProps = {
   onEditingFieldChange: (field: TriageEditField | null) => void;
   onPersistSuggestion?: (item: TriageQueueItem, patch: Partial<EditableTodoSuggestion>) => void;
   onChatNameChange?: (chatId: string, chatName: string) => void;
+  onOpenChat?: (chatId: string) => void;
 };
 
 const DURATION_QUICK_PICKS = [
@@ -139,6 +140,7 @@ export function TodoSuggestionTriageCard({
   onEditingFieldChange,
   onPersistSuggestion,
   onChatNameChange,
+  onOpenChat,
 }: TodoSuggestionTriageCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -322,6 +324,19 @@ export function TodoSuggestionTriageCard({
             icon="💬"
             active={editingField === "chat"}
             onActivate={() => activate("chat")}
+            footer={
+              onOpenChat ? (
+                <button
+                  type="button"
+                  disabled={Boolean(editingField && editingField !== "chat")}
+                  onClick={() => onOpenChat(item.chatId)}
+                  title="Zum Chat springen (in neuem Tab öffnen)"
+                  className="w-full rounded-lg border border-wa-border bg-wa-panel px-3 py-2 text-sm font-medium text-wa-text-primary transition hover:border-wa-green/40 hover:text-wa-green disabled:opacity-40"
+                >
+                  Zum Chat springen
+                </button>
+              ) : undefined
+            }
           >
             {editingField === "chat" ? (
               <input

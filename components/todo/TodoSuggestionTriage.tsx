@@ -134,6 +134,7 @@ export function TodoSuggestionTriage({
           onEditingFieldChange={setEditingField}
           onPersistSuggestion={onPersistSuggestion}
           onChatNameChange={onChatNameChange}
+          onOpenChat={onOpenChat}
         />
       ) : (
         <div className="w-full max-w-md rounded-2xl border border-wa-border bg-wa-panel-secondary/60 p-5">
@@ -147,10 +148,10 @@ export function TodoSuggestionTriage({
             type="button"
             onClick={() => onOpenChat(current.chatId)}
             disabled={Boolean(editingField)}
-            title="Chat in neuem Tab öffnen (C)"
-            className="rounded-xl border border-wa-border bg-wa-panel px-4 py-2.5 text-sm font-medium text-wa-text-primary transition hover:bg-wa-panel-secondary disabled:opacity-40"
+            title="Zum Chat springen (C)"
+            className="rounded-xl border border-wa-border bg-wa-panel px-4 py-2.5 text-sm font-medium text-wa-text-primary transition hover:border-wa-green/40 hover:text-wa-green disabled:opacity-40"
           >
-            Chat öffnen
+            Zum Chat springen
             <span className="ml-1.5 hidden text-xs opacity-70 sm:inline">C</span>
           </button>
         )}
@@ -182,7 +183,7 @@ export function TodoSuggestionTriage({
         ) : (
           <>
             Auf Chat, Titel, Frist oder Details tippen zum Bearbeiten · J ablehnen · K annehmen
-            {onOpenChat ? " · C Chat öffnen" : ""}
+            {onOpenChat ? " · C zum Chat springen" : ""}
           </>
         )}
       </p>

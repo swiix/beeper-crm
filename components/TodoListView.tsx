@@ -48,6 +48,7 @@ import {
   buildTriageQueue,
   type TriageQueueItem,
 } from "@/components/todo/TodoSuggestionTriage";
+import { SuggestionJumpToChatButton } from "@/components/todo/SuggestionJumpToChatButton";
 import { TodoCommandPalette, WORK_MODE_LABELS, type TodoCommandAction } from "@/components/todo/TodoCommandPalette";
 import {
   TodoGlassShell,
@@ -3050,17 +3051,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                       className="flex items-start justify-between gap-2 tg-surface p-3 text-sm"
                     >
                       <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!accountId) return;
-                            onOpenChat(chatId, accountId);
-                          }}
-                          className="mb-1 inline-block rounded bg-wa-panel px-1.5 py-0.5 text-left text-xs text-wa-text-secondary hover:text-wa-text-primary"
-                          title={`Chat in neuem Tab öffnen (${chatId})`}
-                        >
-                          Chat: {chatName}
-                        </button>
+                        <SuggestionJumpToChatButton
+                          chatId={chatId}
+                          chatName={chatName}
+                          accountId={accountId}
+                          onOpenChat={onOpenChat}
+                          variant="chip"
+                        />
                         {isEditing ? (
                           <TodoSuggestionInlineEditor
                             key={`ed-${chatId}-${indexInChat}`}
@@ -3134,6 +3131,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                       </div>
                       {!isEditing && (
                         <div className="flex shrink-0 gap-1.5">
+                          <SuggestionJumpToChatButton
+                            chatId={chatId}
+                            accountId={accountId}
+                            onOpenChat={onOpenChat}
+                          />
                           <button
                             type="button"
                             onClick={() => rejectSuggestion(chatId, indexInChat)}
@@ -3196,17 +3198,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                         className="flex items-start justify-between gap-2 tg-surface p-3 text-sm"
                       >
                         <div className="min-w-0 flex-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!accountId) return;
-                              onOpenChat(chatId, accountId);
-                            }}
-                            className="mb-1 inline-block rounded bg-wa-panel px-1.5 py-0.5 text-left text-xs text-wa-text-secondary hover:text-wa-text-primary"
-                            title={`Chat in neuem Tab öffnen (${chatId})`}
-                          >
-                            Chat: {chatName}
-                          </button>
+                          <SuggestionJumpToChatButton
+                            chatId={chatId}
+                            chatName={chatName}
+                            accountId={accountId}
+                            onOpenChat={onOpenChat}
+                            variant="chip"
+                          />
                           {isEditing ? (
                             <TodoSuggestionInlineEditor
                               key={`ed-all-${chatId}-${indexInChat}`}
@@ -3278,6 +3276,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                         </div>
                         {!isEditing && (
                           <div className="flex shrink-0 gap-1.5">
+                            <SuggestionJumpToChatButton
+                              chatId={chatId}
+                              accountId={accountId}
+                              onOpenChat={onOpenChat}
+                            />
                             <button
                               type="button"
                               onClick={() => rejectSuggestion(chatId, indexInChat)}
@@ -3326,14 +3329,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           ) : suggestions && suggestions.length > 0 ? (
             <div>
               {selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && accountId && (
-                <button
-                  type="button"
-                  onClick={() => onOpenChat(selectedChatId, accountId)}
-                  className="tg-btn-secondary mb-2 w-full py-1.5 text-sm"
-                  title="Diesen Chat in neuem Tab öffnen"
-                >
-                  Chat in neuem Tab öffnen
-                </button>
+                <SuggestionJumpToChatButton
+                  chatId={selectedChatId}
+                  chatName={selectedChatName ?? undefined}
+                  accountId={accountId}
+                  onOpenChat={onOpenChat}
+                  variant="triage"
+                  className="mb-2"
+                />
               )}
               <button
                 type="button"
@@ -3435,8 +3438,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                           </>
                         )}
                       </div>
-                      {!isEditing && (
+                      {!isEditing && selectedChatId && (
                         <div className="flex shrink-0 gap-1.5">
+                          <SuggestionJumpToChatButton
+                            chatId={selectedChatId}
+                            accountId={accountId}
+                            onOpenChat={onOpenChat}
+                          />
                           <button
                             type="button"
                             onClick={() => selectedChatId && rejectSuggestion(selectedChatId, i)}
