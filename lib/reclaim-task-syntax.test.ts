@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { buildReclaimTaskTitle, scheduleTypeFromCategory } from "./reclaim-task-syntax";
+import {
+  buildReclaimTaskTitle,
+  scheduleTypeFromCategory,
+  stripReclaimSyntaxFromBaseTitle,
+} from "./reclaim-task-syntax";
+
+describe("stripReclaimSyntaxFromBaseTitle", () => {
+  it("removes legacy upnext prefix", () => {
+    expect(stripReclaimSyntaxFromBaseTitle("upnext Nina Pfau: Steuerautomation klären")).toBe(
+      "Nina Pfau: Steuerautomation klären"
+    );
+  });
+
+  it("removes trailing reclaim paren syntax", () => {
+    expect(stripReclaimSyntaxFromBaseTitle("Call mom (type personal upnext)")).toBe("Call mom");
+  });
+});
 
 describe("buildReclaimTaskTitle", () => {
   it("builds full Google Tasks / Reclaim syntax", () => {
@@ -39,6 +55,17 @@ describe("buildReclaimTaskTitle", () => {
 
   it("returns plain title when no syntax tokens apply", () => {
     expect(buildReclaimTaskTitle({ title: "Simple task" })).toBe("Simple task");
+  });
+
+  it("migrates legacy upnext prefix into parenthetical syntax", () => {
+    const title = buildReclaimTaskTitle({
+      title: "upnext Nina Pfau Universumpost: Steuerautomation klären",
+      due_date: "2026-06-10",
+      mark_as_next: true,
+    });
+    expect(title).toBe(
+      "Nina Pfau Universumpost: Steuerautomation klären (due 2026-06-10 upnext)"
+    );
   });
 });
 

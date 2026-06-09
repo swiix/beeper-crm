@@ -19,8 +19,8 @@ export function SuggestionNextToggle({ active, onChange, className, disabled }: 
       disabled={disabled}
       title={
         active
-          ? "Als Up Next markiert (Reclaim: onDeck · Google: upnext im Titel)"
-          : "Als Up Next markieren (Reclaim: onDeck · Google: upnext im Titel)"
+          ? "Als Up Next markiert (Reclaim: onDeck · Google: upnext in Klammern)"
+          : "Als Up Next markieren (Reclaim: onDeck · Google: upnext in Klammern)"
       }
       onClick={() => onChange(!active)}
       className={cn(

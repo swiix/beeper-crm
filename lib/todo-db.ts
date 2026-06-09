@@ -4,7 +4,7 @@
 
 import { getDb } from "@/lib/db";
 import { DEFAULT_DUE_TIME, dueDateTimeToMs, msToDueDateTime, syncDueDateFromDateTime, type DueDateTime } from "@/lib/due-datetime";
-import { scheduleTypeFromCategory } from "@/lib/reclaim-task-syntax";
+import { scheduleTypeFromCategory, stripReclaimSyntaxFromBaseTitle } from "@/lib/reclaim-task-syntax";
 
 export const TODO_ITEM_SELECT =
   "id, title, notes, due_date, due_at, completed, archived, priority, sort_order, list_id, source_chat_id, source_chat_name, source_account_id, created_at, updated_at, reminder_at, snoozed, pinned, estimated_time_minutes, external_google_task_id, google_sync_at, external_reclaim_task_id, reclaim_sync_at, sync_upnext, sync_schedule_type, sync_not_before, sync_no_split";
@@ -448,7 +448,7 @@ export function createTodo(data: {
      VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`
   ).run(
     data.id,
-    data.title.trim(),
+    stripReclaimSyntaxFromBaseTitle(data.title.trim()),
     data.notes ?? null,
     due_date,
     due_at,

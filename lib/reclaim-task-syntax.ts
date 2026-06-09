@@ -3,6 +3,27 @@ import type { TodoItem } from "@/lib/todo-db";
 export type ReclaimScheduleType = "work" | "personal";
 export type ReclaimSyntaxPriority = "low" | "medium" | "high" | "critical";
 
+const LEGACY_UPNEXT_PREFIX = /^upnext\s+/i;
+const RECLAIM_PAREN_TOKEN =
+  /\b(type|due|not before|priority:|upnext|up next|duration:|nosplit)\b/i;
+
+/** Remove legacy prefix and trailing Reclaim paren syntax from a raw title. */
+export function stripReclaimSyntaxFromBaseTitle(title: string): string {
+  let base = title.trim();
+  if (!base) return base;
+
+  if (LEGACY_UPNEXT_PREFIX.test(base)) {
+    base = base.replace(LEGACY_UPNEXT_PREFIX, "").trim();
+  }
+
+  const parenMatch = base.match(/^(.*)\s+\(([^)]+)\)\s*$/);
+  if (parenMatch && RECLAIM_PAREN_TOKEN.test(parenMatch[2])) {
+    base = parenMatch[1].trim();
+  }
+
+  return base;
+}
+
 /** Fields used to build Reclaim-compatible Google Tasks title syntax. */
 export interface ReclaimTodoInput {
   title: string;
@@ -76,7 +97,7 @@ function formatNotBeforeToken(input: ReclaimTodoInput): string | null {
 
 /** Build Google Tasks title with Reclaim parsing syntax in trailing parentheses. */
 export function buildReclaimTaskTitle(input: ReclaimTodoInput): string {
-  const baseTitle = input.title.trim();
+  const baseTitle = stripReclaimSyntaxFromBaseTitle(input.title);
   if (!baseTitle) {
     throw new Error("Todo title is required for Reclaim syntax.");
   }
@@ -127,6 +148,25 @@ export function parseReclaimSyntaxFromRecord(raw: Record<string, unknown>): {
     reclaim_not_before: notBefore,
     reclaim_no_split: raw.reclaim_no_split === true || raw.reclaim_no_split === 1 || raw.reclaim_no_split === "true",
     category: typeof raw.category === "string" ? raw.category : null,
+  };
+}
+
+export function suggestionToCreateTodoSyntax(
+  suggestion: ReclaimSyntaxFields & { category?: string | null }
+): {
+  mark_as_next?: boolean;
+  reclaim_schedule_type?: ReclaimScheduleType | null;
+  reclaim_not_before?: string | null;
+  reclaim_no_split?: boolean;
+  category?: string | null;
+} {
+  const fields = suggestionToSyntaxFields(suggestion);
+  return {
+    mark_as_next: fields.mark_as_next ? true : undefined,
+    reclaim_schedule_type: fields.reclaim_schedule_type ?? undefined,
+    reclaim_not_before: fields.reclaim_not_before ?? undefined,
+    reclaim_no_split: fields.reclaim_no_split ? true : undefined,
+    category: suggestion.category ?? undefined,
   };
 }
 

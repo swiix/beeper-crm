@@ -91,6 +91,7 @@ import {
 } from "@/lib/todo-work-mode";
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
 import { isEditableKeyboardTarget } from "@/lib/is-editable-keyboard-target";
+import { suggestionToCreateTodoSyntax } from "@/lib/reclaim-task-syntax";
 import {
   dueDateTimeToMs,
   formatDueDateTimeRelative,
@@ -110,6 +111,9 @@ type TodoSuggestionItem = {
   estimated_time_minutes?: number | null;
   estimated_time_hours?: number | null;
   mark_as_next?: boolean;
+  reclaim_schedule_type?: "work" | "personal" | null;
+  reclaim_not_before?: string | null;
+  reclaim_no_split?: boolean;
 };
 
 type TodoItem = {
@@ -2026,10 +2030,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         body: JSON.stringify({
           title: item.title,
           ...suggestionToDueApiFields(item),
+          ...suggestionToCreateTodoSyntax(item),
           priority: typeof item.priority === "number" ? item.priority : undefined,
           notes: item.notes ?? undefined,
           estimated_time_minutes: item.estimated_time_minutes ?? undefined,
-          mark_as_next: item.mark_as_next === true ? true : undefined,
           list_id: listIdFilter ?? undefined,
           source_chat_id: sid ?? undefined,
           source_chat_name: sname ?? undefined,
@@ -2134,6 +2138,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           todos: suggestions.map((s) => ({
             title: s.title,
             ...suggestionToDueApiFields(s),
+            ...suggestionToCreateTodoSyntax(s),
             priority: typeof s.priority === "number" ? s.priority : 3,
             notes: s.notes ?? undefined,
             category: s.category ?? undefined,
