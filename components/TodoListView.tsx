@@ -3070,6 +3070,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                             }
                             onPersist={(patch) => updateSuggestion(chatId, indexInChat, patch)}
                             onFinish={() => setEditingSuggestion(null)}
+                            onAccept={(item) =>
+                              void acceptSuggestion(item, false, chatId, chatName, chatId, indexInChat).then((r) => {
+                                if (r?.duplicate) alert("Bereits in der Liste");
+                              })
+                            }
                           />
                         ) : (
                           <>
@@ -3211,6 +3216,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                               }
                               onPersist={(patch) => updateSuggestion(chatId, indexInChat, patch)}
                               onFinish={() => setEditingSuggestion(null)}
+                              onAccept={(item) =>
+                                void acceptSuggestion(item, false, chatId, chatName, chatId, indexInChat).then((r) => {
+                                  if (r?.duplicate) alert("Bereits in der Liste");
+                                })
+                              }
                             />
                           ) : (
                             <>
@@ -3362,6 +3372,13 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                             }
                             onPersist={(patch) => updateSuggestion(selectedChatId, i, patch)}
                             onFinish={() => setEditingSuggestion(null)}
+                            onAccept={(item) =>
+                              void acceptSuggestion(item, false, undefined, undefined, selectedChatId ?? undefined, i).then(
+                                (r) => {
+                                  if (r?.duplicate) alert("Bereits in der Liste");
+                                }
+                              )
+                            }
                           />
                         ) : (
                           <>

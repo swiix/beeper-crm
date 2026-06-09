@@ -25,6 +25,8 @@ export type TodoSuggestionInlineEditorProps = {
   initialFocus?: SuggestionEditFocus;
   onPersist: (patch: Partial<EditableTodoSuggestion>) => void;
   onFinish: () => void;
+  /** Save edits and accept the suggestion as a todo. */
+  onAccept?: (item: EditableTodoSuggestion) => void | Promise<void>;
   /** Always-visible fields (e.g. triage card); no Esc-to-close or Fertig button. */
   embedded?: boolean;
 };
@@ -35,6 +37,7 @@ export function TodoSuggestionInlineEditor({
   initialFocus,
   onPersist,
   onFinish,
+  onAccept,
   embedded = false,
 }: TodoSuggestionInlineEditorProps) {
   const [title, setTitle] = useState(suggestion.title);
@@ -113,10 +116,41 @@ export function TodoSuggestionInlineEditor({
     flushDurationIntoParent,
   ]);
 
+  const buildMergedSuggestion = useCallback((): EditableTodoSuggestion => {
+    const tid = title.trim() || suggestion.title;
+    const dueNorm = syncDueDateFromDateTime(dueDateTime);
+    const n = notes.trim() || null;
+    const raw = hoursStr.trim();
+    const hours = raw === "" ? null : Number(raw.replace(",", "."));
+    let estimated_time_minutes: number | null = null;
+    let estimated_time_hours: number | null = null;
+    if (hours != null && !Number.isNaN(hours) && hours >= 0) {
+      const roundedHours = Number(hours.toFixed(2));
+      estimated_time_hours = roundedHours;
+      estimated_time_minutes = Math.round(roundedHours * 60);
+    }
+    return {
+      ...suggestion,
+      title: tid,
+      due: dueNorm,
+      due_time: dueDateTime.time,
+      notes: n,
+      estimated_time_minutes,
+      estimated_time_hours,
+    };
+  }, [title, dueDateTime, notes, hoursStr, suggestion]);
+
   const persistFieldsAndClose = useCallback(() => {
     persistAllFields();
     if (!embedded) onFinish();
   }, [persistAllFields, embedded, onFinish]);
+
+  const persistFieldsAndAccept = useCallback(async () => {
+    const merged = buildMergedSuggestion();
+    persistAllFields();
+    if (onAccept) await onAccept(merged);
+    if (!embedded) onFinish();
+  }, [buildMergedSuggestion, persistAllFields, onAccept, embedded, onFinish]);
 
   useLayoutEffect(() => {
     if (embedded && !initialFocus) return;
@@ -275,10 +309,20 @@ export function TodoSuggestionInlineEditor({
             type="button"
             onClick={persistFieldsAndClose}
             title="Alle Felder speichern und Bearbeitungsmodus beenden (wie Enter außer in der Beschreibung)"
-            className="rounded border border-wa-green bg-wa-green/15 px-2 py-1 text-xs font-medium text-wa-green"
+            className="tg-btn-secondary px-3 py-1.5 text-xs"
           >
             Fertig (Speichern)
           </button>
+          {onAccept && (
+            <button
+              type="button"
+              onClick={() => void persistFieldsAndAccept()}
+              title="Änderungen speichern und Vorschlag als Todo übernehmen"
+              className="tg-btn-primary px-3 py-1.5 text-xs"
+            >
+              Speichern und akzeptieren
+            </button>
+          )}
         </div>
       )}
     </div>
