@@ -926,11 +926,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
 
   useEffect(() => {
     if (!chatContextMenu && !suggestionContextMenu) return;
-    const close = () => setChatContextMenu(null);
-    const closeSuggestion = () => setSuggestionContextMenu(null);
-    window.addEventListener("click", close);
-    window.addEventListener("click", closeSuggestion);
-    return () => window.removeEventListener("click", close);
+    const closeMenus = () => {
+      setChatContextMenu(null);
+      setSuggestionContextMenu(null);
+    };
+    window.addEventListener("click", closeMenus);
+    return () => window.removeEventListener("click", closeMenus);
   }, [chatContextMenu, suggestionContextMenu]);
 
   const TODO_ANALYSIS_STEPS = ["Lade Nachrichten…", "Transkribiere & Bilder…", "KI extrahiert Todos…"];
@@ -2782,54 +2783,6 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             </TodoGlassSection>
           )}
         </TodoGlassPanelScroll>
-        {chatContextMenu && (
-          <div
-            className="tg-popover fixed z-50 min-w-56"
-            style={{ left: chatContextMenu.x, top: chatContextMenu.y }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <TodoGlassButton
-              variant="ghost"
-              fullWidth
-              className="justify-start text-sm"
-              onClick={() => {
-                const id = chatContextMenu.chatId;
-                togglePinnedChat(id, !pinnedChatIds.includes(id));
-                setChatContextMenu(null);
-              }}
-            >
-              {pinnedChatIds.includes(chatContextMenu.chatId) ? "Pin entfernen" : "Anpinnen"}
-            </TodoGlassButton>
-            <TodoGlassButton
-              variant="ghost"
-              fullWidth
-              className="justify-start text-sm"
-              onClick={() => {
-                const id = chatContextMenu.chatId;
-                updateIgnoredChatIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-                setChatContextMenu(null);
-              }}
-            >
-              {ignoredChatIds.includes(chatContextMenu.chatId) ? "Von Ignorieren entfernen" : "Für Analyse ignorieren"}
-            </TodoGlassButton>
-          </div>
-        )}
-        {suggestionContextMenu && (
-          <div
-            className="tg-popover fixed z-50 min-w-72"
-            style={{ left: suggestionContextMenu.x, top: suggestionContextMenu.y }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <TodoGlassButton
-              variant="ghost"
-              fullWidth
-              className="justify-start text-sm"
-              onClick={() => ignoreChatForFutureSuggestions(suggestionContextMenu.chatId)}
-            >
-              Kontakt für zukünftige Analysen ignorieren und alle Vorschläge dieses Kontakts löschen
-            </TodoGlassButton>
-          </div>
-        )}
       </TodoGlassPanel>
 
       <TodoGlassResizeHandle
@@ -4022,6 +3975,56 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         </TodoGlassPanelScroll>
       </TodoGlassPanel>
       </TodoGlassShell>
+      {chatContextMenu && (
+        <div
+          className="tg-popover fixed z-[100] min-w-56"
+          style={{ left: chatContextMenu.x, top: chatContextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <TodoGlassButton
+            variant="ghost"
+            fullWidth
+            className="justify-start text-sm"
+            onClick={() => {
+              const id = chatContextMenu.chatId;
+              togglePinnedChat(id, !pinnedChatIds.includes(id));
+              setChatContextMenu(null);
+            }}
+          >
+            {pinnedChatIds.includes(chatContextMenu.chatId) ? "Pin entfernen" : "Anpinnen"}
+          </TodoGlassButton>
+          <TodoGlassButton
+            variant="ghost"
+            fullWidth
+            className="justify-start text-sm"
+            onClick={() => {
+              const id = chatContextMenu.chatId;
+              updateIgnoredChatIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+              setChatContextMenu(null);
+            }}
+          >
+            {ignoredChatIds.includes(chatContextMenu.chatId) ? "Von Ignorieren entfernen" : "Für Analyse ignorieren"}
+          </TodoGlassButton>
+        </div>
+      )}
+      {suggestionContextMenu && (
+        <div
+          className="tg-popover fixed z-[100] min-w-72"
+          style={{ left: suggestionContextMenu.x, top: suggestionContextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <TodoGlassButton
+            variant="ghost"
+            fullWidth
+            className="justify-start text-sm"
+            onClick={() => ignoreChatForFutureSuggestions(suggestionContextMenu.chatId)}
+          >
+            Kontakt für zukünftige Analysen ignorieren und alle Vorschläge dieses Kontakts löschen
+          </TodoGlassButton>
+        </div>
+      )}
     </div>
     <OnePromptResultsDialog
       open={onePromptDialogOpen}
