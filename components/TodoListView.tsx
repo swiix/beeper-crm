@@ -622,6 +622,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
   const [postAnalyzeBanner, setPostAnalyzeBanner] = useState<{
     suggestionCount: number;
     chatCount: number;
+    costUsd?: number;
   } | null>(null);
   const [lastAnalyzeCost, setLastAnalyzeCost] = useState<AnalyzeCostSummary | null>(null);
   const [batchZeroResultsHint, setBatchZeroResultsHint] = useState(false);
@@ -1526,6 +1527,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     const stoppedEarlyAfterFailuresRef = { current: false };
     const messagesLoadedRef = { current: 0 };
     const batchCostUsdRef = { current: 0 };
+    const batchTokensRef = { current: 0 };
     const chatNameById = new Map(
       chatList.map((c) => [c.id, (c.name ?? (c as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? ""])
     );
@@ -1592,6 +1594,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             }
             if (result) {
               batchCostUsdRef.current += readAnalyzeCostUsd(result);
+              const resultTokens =
+                typeof result.usage?.total_tokens === "number" && result.usage.total_tokens > 0
+                  ? result.usage.total_tokens
+                  : 0;
+              if (resultTokens > 0) batchTokensRef.current += resultTokens;
               const todos = toTodoSuggestionList(result.todos);
               const msgCount = typeof result.message_count === "number" ? result.message_count : 0;
               messagesLoadedRef.current += msgCount;
@@ -1601,6 +1608,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           } else {
             const data = (await res.json()) as TodoAnalyzeApiPayload;
             batchCostUsdRef.current += readAnalyzeCostUsd(data);
+            const resultTokens =
+              typeof data.usage?.total_tokens === "number" && data.usage.total_tokens > 0
+                ? data.usage.total_tokens
+                : 0;
+            if (resultTokens > 0) batchTokensRef.current += resultTokens;
             const todos = toTodoSuggestionList(data.todos);
             const msgCount = typeof data.message_count === "number" ? data.message_count : 0;
             messagesLoadedRef.current += msgCount;
@@ -1618,7 +1630,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         } finally {
           if (!signal.aborted) {
             doneRef.current += 1;
-            setLoadingAllProgress({ done: doneRef.current, total: ids.length, messagesLoaded: messagesLoadedRef.current });
+            const done = doneRef.current;
+            const total = ids.length;
+            setLoadingAllProgress({ done, total, messagesLoaded: messagesLoadedRef.current });
+            setLastAnalyzeCost({
+              label: done < total ? `Batch ${done}/${total} Chats (läuft…)` : `Batch ${done}/${total} Chats`,
+              costUsd: batchCostUsdRef.current,
+              totalTokens: batchTokensRef.current > 0 ? batchTokensRef.current : null,
+            });
             setLoadingMessagePagesByChatId((prev) => {
               const next = { ...prev };
               delete next[chatId];
@@ -1642,7 +1661,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         }
       }
       if (suggestionCount > 0) {
-        setPostAnalyzeBanner({ suggestionCount, chatCount });
+        setPostAnalyzeBanner({
+          suggestionCount,
+          chatCount,
+          costUsd: batchCostUsdRef.current,
+        });
         setBatchZeroResultsHint(false);
       } else if (ids.length > 0) {
         setBatchZeroResultsHint(true);
@@ -1659,6 +1682,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         setLastAnalyzeCost({
           label: `Batch ${doneRef.current}/${ids.length} Chats`,
           costUsd: batchCostUsdRef.current,
+          totalTokens: batchTokensRef.current > 0 ? batchTokensRef.current : null,
         });
         void showAnalyzeCostNotification({
           costUsd: batchCostUsdRef.current,
@@ -1827,11 +1851,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     setBatchZeroResultsHint(false);
     setLoadingAllError(null);
     setLoadingMessagePagesByChatId({});
+    setLastAnalyzeCost(null);
     setLoadingAllProgress({ done: 0, total: ids.length, messagesLoaded: 0 });
     const doneRef = { current: 0 };
     const failedRef = { current: 0 };
     const stoppedEarlyAfterFailuresRef = { current: false };
     const messagesLoadedRef = { current: 0 };
+    const batchCostUsdRef = { current: 0 };
+    const batchTokensRef = { current: 0 };
     const chatNameById = new Map(
       chatsAvailableForAnalysis.map((c) => [c.id, (c.name ?? (c as { participants?: Array<{ name?: string }> })?.participants?.[0]?.name) ?? ""])
     );
@@ -1866,7 +1893,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let buffer = "";
-            let result: { todos: unknown[]; message_count: number } | null = null;
+            let result: TodoAnalyzeApiPayload | null = null;
             while (true) {
               if (signal.aborted) break;
               const { done, value } = await reader.read();
@@ -1878,11 +1905,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 const trimmed = line.trim();
                 if (!trimmed) continue;
                 try {
-                  const event = JSON.parse(trimmed) as { type: string; page?: number; todos?: unknown[]; message_count?: number; error?: string };
+                  const event = JSON.parse(trimmed) as TodoAnalyzeApiPayload & {
+                    type: string;
+                    page?: number;
+                    error?: string;
+                  };
                   if (event.type === "messages_page" && typeof event.page === "number") {
                     setLoadingMessagePagesByChatId((prev) => ({ ...prev, [chatId]: event.page! }));
                   } else if (event.type === "result") {
-                    result = { todos: event.todos ?? [], message_count: event.message_count ?? 0 };
+                    result = event;
                   } else if (event.type === "error") {
                     throw new Error(event.error ?? "Analyse fehlgeschlagen");
                   }
@@ -1892,6 +1923,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               }
             }
             if (result) {
+              batchCostUsdRef.current += readAnalyzeCostUsd(result);
+              const resultTokens =
+                typeof result.usage?.total_tokens === "number" && result.usage.total_tokens > 0
+                  ? result.usage.total_tokens
+                  : 0;
+              if (resultTokens > 0) batchTokensRef.current += resultTokens;
               const todos = toTodoSuggestionList(result.todos);
               const msgCount = typeof result.message_count === "number" ? result.message_count : 0;
               messagesLoadedRef.current += msgCount;
@@ -1899,9 +1936,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
             }
           } else {
-            const data = await res.json();
-            const todos = toTodoSuggestionList((data as { todos?: unknown }).todos);
-            const msgCount = typeof (data as { message_count?: number }).message_count === "number" ? (data as { message_count: number }).message_count : 0;
+            const data = (await res.json()) as TodoAnalyzeApiPayload;
+            batchCostUsdRef.current += readAnalyzeCostUsd(data);
+            const resultTokens =
+              typeof data.usage?.total_tokens === "number" && data.usage.total_tokens > 0
+                ? data.usage.total_tokens
+                : 0;
+            if (resultTokens > 0) batchTokensRef.current += resultTokens;
+            const todos = toTodoSuggestionList(data.todos);
+            const msgCount = typeof data.message_count === "number" ? data.message_count : 0;
             messagesLoadedRef.current += msgCount;
             setBatchSuggestionChatOrder((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
             setSuggestionsByChat((prev) => ({ ...prev, [chatId]: todos }));
@@ -1917,7 +1960,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         } finally {
           if (!signal.aborted) {
             doneRef.current += 1;
-            setLoadingAllProgress({ done: doneRef.current, total: ids.length, messagesLoaded: messagesLoadedRef.current });
+            const done = doneRef.current;
+            const total = ids.length;
+            setLoadingAllProgress({ done, total, messagesLoaded: messagesLoadedRef.current });
+            setLastAnalyzeCost({
+              label: done < total ? `Batch ${done}/${total} Chats (läuft…)` : `Batch ${done}/${total} Chats`,
+              costUsd: batchCostUsdRef.current,
+              totalTokens: batchTokensRef.current > 0 ? batchTokensRef.current : null,
+            });
             setLoadingMessagePagesByChatId((prev) => {
               const next = { ...prev };
               delete next[chatId];
@@ -1941,6 +1991,18 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           msg += ` Abgebrochen nach ${TODO_ANALYZE_MAX_FAILURES_BEFORE_STOP} Fehlern.`;
         }
         setLoadingAllError(msg);
+      }
+      if (!signal.aborted) {
+        setLastAnalyzeCost({
+          label: `Batch ${doneRef.current}/${ids.length} Chats`,
+          costUsd: batchCostUsdRef.current,
+          totalTokens: batchTokensRef.current > 0 ? batchTokensRef.current : null,
+        });
+        void showAnalyzeCostNotification({
+          costUsd: batchCostUsdRef.current,
+          title: "Batch-Scan abgeschlossen",
+          detail: `${doneRef.current}/${ids.length} Chats`,
+        });
       }
     }
   }, [selectedChatIds, selectedChatId, accountId, chatsAvailableForAnalysis, chats, ignoredChatIds, pinnedChatIds, getAnalyzeSettings]);
@@ -2769,6 +2831,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                       {loadingAllProgress.done} von {loadingAllProgress.total} Chats analysiert
                       {" · "}
                       {loadingAllProgress.messagesLoaded} Nachrichten in fertigen Chats
+                      {lastAnalyzeCost?.label.startsWith("Batch") && (
+                        <span className="ml-1 font-medium text-wa-green">
+                          · {formatAnalyzeCostUsd(lastAnalyzeCost.costUsd)} USD
+                        </span>
+                      )}
                       {loadingAllStep
                         ? ` · ${loadingAllStep === TODO_ANALYSIS_STEPS[0]
                             ? `Lade Nachrichten #${Object.keys(loadingMessagePagesByChatId).length ? Math.max(...Object.values(loadingMessagePagesByChatId)) : 0}`
@@ -2787,6 +2854,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   </>
                 )}
               </TodoGlassSection>
+              {lastAnalyzeCost?.label.startsWith("Batch") && (
+                <AnalyzeCostBanner
+                  summary={lastAnalyzeCost}
+                  onDismiss={loadingAllSuggestions ? undefined : () => setLastAnalyzeCost(null)}
+                />
+              )}
               {loadingAllError && (
                 <p className="tg-alert tg-alert-warning mb-2 text-xs">{loadingAllError}</p>
               )}
@@ -2939,7 +3012,14 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           )}
           {batchZeroResultsHint && !loadingAllSuggestions && leftTab !== "dashboard" && (
             <div className="tg-alert tg-alert-warning mb-2">
-              <p>Batch abgeschlossen ohne neue Vorschläge.</p>
+              <p>
+                Batch abgeschlossen ohne neue Vorschläge.
+                {lastAnalyzeCost?.label.startsWith("Batch") && (
+                  <span className="ml-1 font-medium text-wa-green">
+                    ({formatAnalyzeCostUsd(lastAnalyzeCost.costUsd)} USD)
+                  </span>
+                )}
+              </p>
               <p className="mt-1">Preset oder Inbox-Filter anpassen, oder mit Shift+Klick „Alles neu“ analysieren.</p>
               <button
                 type="button"
@@ -2957,6 +3037,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             <div className="tg-alert tg-alert-info mb-2 flex flex-wrap items-center justify-between gap-2">
               <span className="text-wa-text-primary">
                 {postAnalyzeBanner.suggestionCount} neue Vorschläge in {postAnalyzeBanner.chatCount} Chats
+                {typeof postAnalyzeBanner.costUsd === "number" && (
+                  <span className="ml-1 font-medium text-wa-green">
+                    · {formatAnalyzeCostUsd(postAnalyzeBanner.costUsd)} USD
+                  </span>
+                )}
               </span>
               <span className="flex gap-2">
                 <button
@@ -3079,6 +3164,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               Analysiere {loadingAllProgress.done}/{loadingAllProgress.total} Chats
               {" · "}
               {loadingAllProgress.messagesLoaded} Nachrichten in fertigen Chats
+              {lastAnalyzeCost?.label.startsWith("Batch") && (
+                <span className="ml-1 text-wa-green">
+                  · {formatAnalyzeCostUsd(lastAnalyzeCost.costUsd)} USD
+                </span>
+              )}
             </p>
           )}
           {selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && lastAnalyzedMessageCount != null && suggestions && suggestions.length > 0 && (
@@ -3302,6 +3392,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               Analysiere {loadingAllProgress.done}/{loadingAllProgress.total} Chats
               {" · "}
               {loadingAllProgress.messagesLoaded} Nachrichten in fertigen Chats
+              {lastAnalyzeCost?.label.startsWith("Batch") && (
+                <span className="font-medium text-wa-green">
+                  {" · "}
+                  {formatAnalyzeCostUsd(lastAnalyzeCost.costUsd)} USD
+                </span>
+              )}
               . Vorschläge erscheinen hier, sobald Chats fertig sind.
             </p>
           ) : selectedChatId === ALL_CHATS_SENTINEL ? (
