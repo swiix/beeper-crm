@@ -49,6 +49,11 @@ import {
   type TriageQueueItem,
 } from "@/components/todo/TodoSuggestionTriage";
 import { SuggestionJumpToChatButton } from "@/components/todo/SuggestionJumpToChatButton";
+import {
+  AnalyzeCostBanner,
+  analyzeCostFromPayload,
+  type AnalyzeCostSummary,
+} from "@/components/todo/AnalyzeCostBanner";
 import { TodoCommandPalette, WORK_MODE_LABELS, type TodoCommandAction } from "@/components/todo/TodoCommandPalette";
 import {
   TodoGlassShell,
@@ -92,7 +97,7 @@ import {
 import { chatMatchesSearchQuery } from "@/lib/chat-phone-search";
 import { isEditableKeyboardTarget } from "@/lib/is-editable-keyboard-target";
 import { suggestionToCreateTodoSyntax } from "@/lib/reclaim-task-syntax";
-import { readAnalyzeCostUsd } from "@/lib/openai-cost";
+import { readAnalyzeCostUsd, formatAnalyzeCostUsd } from "@/lib/openai-cost";
 import { showAnalyzeCostNotification } from "@/lib/show-analyze-cost-notification";
 import {
   dueDateTimeToMs,
@@ -432,6 +437,7 @@ type TodoAnalyzeApiPayload = {
   todos?: unknown[];
   message_count?: number;
   estimated_cost_usd?: number;
+  usage?: { total_tokens?: number };
 };
 
 /** Max concurrent todo-list analyze requests when loading suggestions for all visible chats. */
@@ -617,6 +623,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     suggestionCount: number;
     chatCount: number;
   } | null>(null);
+  const [lastAnalyzeCost, setLastAnalyzeCost] = useState<AnalyzeCostSummary | null>(null);
   const [batchZeroResultsHint, setBatchZeroResultsHint] = useState(false);
   const [triageChatNameById, setTriageChatNameById] = useState<Record<string, string>>({});
   const [modalTargetChatIds, setModalTargetChatIds] = useState<string[]>([]);
@@ -1379,7 +1386,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     });
     setAcceptAllResult(null);
     setLastAnalyzedMessageCount(null);
+    setLastAnalyzeCost(null);
     let scanCostUsd = 0;
+    let lastResultPayload: TodoAnalyzeApiPayload | null = null;
     try {
       const res = await fetch("/api/todo-list/analyze", {
         method: "POST",
@@ -1438,6 +1447,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           }
         }
         if (result) {
+          lastResultPayload = result;
           scanCostUsd = readAnalyzeCostUsd(result);
           const list = toTodoSuggestionList(result.todos);
           setSuggestionsByChat((prev) => ({ ...prev, [chatId]: list }));
@@ -1445,6 +1455,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         }
       } else {
         const data = (await res.json()) as TodoAnalyzeApiPayload;
+        lastResultPayload = data;
         scanCostUsd = readAnalyzeCostUsd(data);
         const list = toTodoSuggestionList(data.todos);
         setSuggestionsByChat((prev) => ({ ...prev, [chatId]: list }));
@@ -1452,6 +1463,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         if (msgCount != null) setLastAnalyzedMessageCount(msgCount);
       }
       if (!signal.aborted) {
+        setLastAnalyzeCost(
+          analyzeCostFromPayload(contactName ?? chatId.slice(0, 8), lastResultPayload)
+        );
         void showAnalyzeCostNotification({
           costUsd: scanCostUsd,
           title: "Chat-Scan abgeschlossen",
@@ -1504,6 +1518,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     setBatchZeroResultsHint(false);
     setLoadingAllError(null);
     setLoadingMessagePagesByChatId({});
+    setLastAnalyzeCost(null);
     setLoadingAllProgress({ done: 0, total: chatList.length, messagesLoaded: 0 });
     const ids = chatList.map((c) => c.id).filter(Boolean) as string[];
     const doneRef = { current: 0 };
@@ -1641,6 +1656,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
         setLoadingAllError(msg);
       }
       if (!signal.aborted) {
+        setLastAnalyzeCost({
+          label: `Batch ${doneRef.current}/${ids.length} Chats`,
+          costUsd: batchCostUsdRef.current,
+        });
         void showAnalyzeCostNotification({
           costUsd: batchCostUsdRef.current,
           title: "Batch-Scan abgeschlossen",
@@ -1706,6 +1725,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       setOnePromptResults(Array.isArray(data.results) ? data.results : []);
       setOnePromptProcessedCount(processed);
       setOnePromptTotalCostUsd(totalCostUsd);
+      setLastAnalyzeCost({
+        label: `One-Prompt ${processed} Chats`,
+        costUsd: totalCostUsd,
+      });
       void showAnalyzeCostNotification({
         costUsd: totalCostUsd,
         title: "One-Prompt Scan abgeschlossen",
@@ -2956,6 +2979,9 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               </span>
             </div>
           )}
+          {lastAnalyzeCost && leftTab !== "dashboard" && (
+            <AnalyzeCostBanner summary={lastAnalyzeCost} onDismiss={() => setLastAnalyzeCost(null)} />
+          )}
           {leftTab === "dashboard" ? (
             <>
               <h2 className="text-sm font-semibold text-wa-text-primary">Dashboard</h2>
@@ -3058,6 +3084,11 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
           {selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && lastAnalyzedMessageCount != null && suggestions && suggestions.length > 0 && (
             <p className="mt-1 text-xs text-wa-text-secondary">
               {lastAnalyzedMessageCount} Nachrichten ausgewertet
+              {lastAnalyzeCost && (
+                <span className="ml-1 font-medium text-wa-green">
+                  · {formatAnalyzeCostUsd(lastAnalyzeCost.costUsd)} USD
+                </span>
+              )}
             </p>
           )}
           {leftTab !== "dashboard" && selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL && !loadingAllSuggestions && (
