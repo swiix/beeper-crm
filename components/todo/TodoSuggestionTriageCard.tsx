@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { DueDatePicker } from "@/components/DueDatePicker";
 import { RichTextNotes } from "@/components/RichTextNotes";
 import { SuggestionNextToggle } from "@/components/todo/SuggestionNextToggle";
@@ -29,6 +29,7 @@ type TodoSuggestionTriageCardProps = {
   onPersistSuggestion?: (item: TriageQueueItem, patch: Partial<EditableTodoSuggestion>) => void;
   onChatNameChange?: (chatId: string, chatName: string) => void;
   onOpenChat?: (chatId: string) => void;
+  onContextMenu?: (e: MouseEvent) => void;
 };
 
 const DURATION_QUICK_PICKS = [
@@ -141,6 +142,7 @@ export function TodoSuggestionTriageCard({
   onPersistSuggestion,
   onChatNameChange,
   onOpenChat,
+  onContextMenu,
 }: TodoSuggestionTriageCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -316,6 +318,11 @@ export function TodoSuggestionTriageCard({
     <div
       ref={cardRef}
       className="w-full max-w-xl overflow-hidden tg-panel shadow-glass"
+      onContextMenu={(e) => {
+        if (!onContextMenu) return;
+        e.preventDefault();
+        onContextMenu(e);
+      }}
     >
       <div className="space-y-1 p-2">
         {onChatNameChange && (

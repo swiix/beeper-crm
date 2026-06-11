@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import type { EditableTodoSuggestion } from "@/components/todo/TodoSuggestionInlineEditor";
 import {
   TodoSuggestionTriageCard,
@@ -22,6 +22,7 @@ type TodoSuggestionTriageProps = {
   onOpenChat?: (chatId: string) => void;
   onPersistSuggestion?: (item: TriageQueueItem, patch: Partial<EditableTodoSuggestion>) => void;
   onChatNameChange?: (chatId: string, chatName: string) => void;
+  onChatContextMenu?: (chatId: string, clientX: number, clientY: number) => void;
 };
 
 export function buildTriageQueue(
@@ -51,6 +52,7 @@ export function TodoSuggestionTriage({
   onOpenChat,
   onPersistSuggestion,
   onChatNameChange,
+  onChatContextMenu,
 }: TodoSuggestionTriageProps) {
   const [cursor, setCursor] = useState(0);
   const [editingField, setEditingField] = useState<TriageEditField | null>(null);
@@ -111,6 +113,12 @@ export function TodoSuggestionTriage({
 
   if (!current) return null;
 
+  const openChatContextMenu = (e: MouseEvent) => {
+    if (!onChatContextMenu || editingField) return;
+    e.preventDefault();
+    onChatContextMenu(current.chatId, e.clientX, e.clientY);
+  };
+
   return (
     <div className="flex flex-col items-center px-2 py-4">
       <div className="mb-4 w-full max-w-xl">
@@ -137,9 +145,13 @@ export function TodoSuggestionTriage({
           onPersistSuggestion={onPersistSuggestion}
           onChatNameChange={onChatNameChange}
           onOpenChat={onOpenChat}
+          onContextMenu={onChatContextMenu ? openChatContextMenu : undefined}
         />
       ) : (
-        <div className="w-full max-w-xl rounded-2xl border border-wa-border bg-wa-panel-secondary/60 p-5">
+        <div
+          className="w-full max-w-xl rounded-2xl border border-wa-border bg-wa-panel-secondary/60 p-5"
+          onContextMenu={onChatContextMenu ? openChatContextMenu : undefined}
+        >
           <p className="text-base font-semibold text-wa-text-primary">{current.suggestion.title}</p>
         </div>
       )}
@@ -186,6 +198,7 @@ export function TodoSuggestionTriage({
           <>
             Auf Chat, Titel, Frist oder Details tippen zum Bearbeiten · J ablehnen · K annehmen
             {onOpenChat ? " · C zum Chat springen" : ""}
+            {onChatContextMenu ? " · Rechtsklick: Chat ignorieren" : ""}
           </>
         )}
       </p>

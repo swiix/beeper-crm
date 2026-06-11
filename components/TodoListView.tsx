@@ -3320,6 +3320,10 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
               onChatNameChange={(chatId, chatName) =>
                 setTriageChatNameById((prev) => ({ ...prev, [chatId]: chatName }))
               }
+              onChatContextMenu={(chatId, x, y) => {
+                setChatContextMenu(null);
+                setSuggestionContextMenu({ chatId, x, y });
+              }}
             />
           ) : loadingAllSuggestions && batchSuggestionsFlat.length > 0 ? (
             <div>
