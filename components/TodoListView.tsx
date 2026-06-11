@@ -76,6 +76,7 @@ import {
   suggestPresetForChat,
   type TodoAnalyzePresetId,
 } from "@/lib/todo-analyze-presets";
+import { formatTodoAnalyzeSettingsTooltip } from "@/lib/todo-analyze-settings-tooltip";
 import type { TodoBatchScope } from "@/lib/todo-batch-scope";
 import { TODO_BATCH_SCOPE_LABELS } from "@/lib/todo-batch-scope";
 import {
@@ -2080,6 +2081,70 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     ? (selectedChat.name ?? selectedChat.participants?.[0]?.name ?? null)
     : null;
 
+  const analyzeSettingsForTooltip = useMemo(
+    () => ({
+      promptSuffix: analyzePromptSuffix,
+      onePromptAllChats: onePromptAllChats,
+      scanMode: analyzeScanMode,
+      maxAgeValue: analyzeMaxAgeValue,
+      maxAgeUnit: analyzeMaxAgeUnit,
+      maxMessages: analyzeMaxMessages,
+      attachmentMode: analyzeAttachmentMode,
+      analyzeForce: analyzeForce,
+    }),
+    [
+      analyzePromptSuffix,
+      onePromptAllChats,
+      analyzeScanMode,
+      analyzeMaxAgeValue,
+      analyzeMaxAgeUnit,
+      analyzeMaxMessages,
+      analyzeAttachmentMode,
+      analyzeForce,
+    ]
+  );
+
+  const batchAnalyzeTooltip = useMemo(() => {
+    const preset = getLastTodoAnalyzePreset() ?? "daily_fast";
+    const effective = resolveQuickRunAnalyzeSettings(preset, analyzeSettingsForTooltip);
+    return formatTodoAnalyzeSettingsTooltip(effective, {
+      presetId: preset,
+      actionHint: `Klick: ${formatChatCountLabel(batchTargetChats.length)} Chats (${TODO_BATCH_SCOPE_LABELS[batchScope]}) · Shift+Klick: Einstellungen`,
+    });
+  }, [analyzeSettingsForTooltip, batchTargetChats.length, batchScope]);
+
+  const selectionAnalyzeTooltip = useMemo(() => {
+    const preset = getLastTodoAnalyzePreset() ?? "daily_fast";
+    const effective = resolveQuickRunAnalyzeSettings(preset, analyzeSettingsForTooltip);
+    const count =
+      selectedChatIds.length > 0
+        ? selectedChatIds.length
+        : selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL
+          ? 1
+          : 0;
+    return formatTodoAnalyzeSettingsTooltip(effective, {
+      presetId: preset,
+      actionHint: `Klick: ${count} ausgewählte Chats · Shift+Klick: Einstellungen`,
+    });
+  }, [analyzeSettingsForTooltip, selectedChatIds.length, selectedChatId]);
+
+  const singleAnalyzeTooltip = useMemo(() => {
+    const preset = selectedChat ? suggestPresetForChat(selectedChat) : "daily_fast";
+    const effective = resolveQuickRunAnalyzeSettings(preset, analyzeSettingsForTooltip);
+    return formatTodoAnalyzeSettingsTooltip(effective, {
+      presetId: preset,
+      actionHint: "Klick: diesen Chat analysieren · Shift+Klick: Einstellungen",
+    });
+  }, [analyzeSettingsForTooltip, selectedChat]);
+
+  const onePromptAnalyzeTooltip = useMemo(() => {
+    const preset = getLastTodoAnalyzePreset() ?? "daily_fast";
+    return formatTodoAnalyzeSettingsTooltip(analyzeSettingsForTooltip, {
+      presetId: preset,
+      actionHint: `Dialog für ${formatChatCountLabel(batchTargetChats.length)} Chats (${TODO_BATCH_SCOPE_LABELS[batchScope]})`,
+    });
+  }, [analyzeSettingsForTooltip, batchTargetChats.length, batchScope]);
+
   const suggestions = selectedChatId && selectedChatId !== ALL_CHATS_SENTINEL ? (suggestionsByChat[selectedChatId] ?? null) : null;
 
   const allSuggestionsFlat = useMemo(() => {
@@ -2779,7 +2844,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                         }
                       }}
                       disabled={loadingAllSuggestions}
-                      title="Ausgewählte Chats analysieren (Shift+Klick: Einstellungen)"
+                      title={selectionAnalyzeTooltip}
                     >
                       {loadingAllSuggestions && loadingAllProgress
                         ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
@@ -2804,7 +2869,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   fullWidth
                   onClick={(e) => handleBatchAnalyzeClick(e, "all")}
                   disabled={loadingAllSuggestions || batchTargetChats.length === 0}
-                  title={`Todo-Vorschläge für ${formatChatCountLabel(batchTargetChats.length)} laden (${TODO_BATCH_SCOPE_LABELS[batchScope]}). Shift+Klick: Einstellungen.`}
+                  title={batchAnalyzeTooltip}
                   className="text-xs"
                 >
                   {loadingAllSuggestions && loadingAllProgress
@@ -2820,7 +2885,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     openAnalyzeSettingsModal("one-prompt", { targetChatIds: batchTargetChatIds });
                   }}
                   disabled={loadingAllSuggestions || batchTargetChats.length === 0}
-                  title={`One-Prompt für ${formatChatCountLabel(batchTargetChats.length)} (${TODO_BATCH_SCOPE_LABELS[batchScope]})`}
+                  title={onePromptAnalyzeTooltip}
                 >
                   One-Prompt für {formatChatCountLabel(batchTargetChats.length)}
                 </TodoGlassButton>
@@ -3193,7 +3258,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                   className="flex-1"
                   onClick={handleSingleAnalyzeClick}
                   disabled={isCurrentChatAnalyzing}
-                  title="Diesen Chat analysieren (Shift+Klick: Einstellungen)"
+                  title={singleAnalyzeTooltip}
                 >
                   {isCurrentChatAnalyzing ? "Analysiere…" : "Todo-Vorschläge laden"}
                 </TodoGlassButton>
