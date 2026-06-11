@@ -223,7 +223,7 @@ export function TodoAnalyzeSettingsDialog({
         className="tg-modal flex max-h-[min(90vh,720px)] w-full max-w-xl flex-col font-sans"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 border-b border-[rgb(var(--tg-border))] px-5 py-4">
+        <div className="shrink-0 border-b border-wa-border px-5 py-4">
           <h2 id="analyze-settings-modal-title" className="text-base font-semibold leading-snug text-wa-text-primary">
             {MODE_TITLES[mode]}
           </h2>
@@ -376,7 +376,7 @@ export function TodoAnalyzeSettingsDialog({
             </section>
           )}
 
-          <section className="overflow-hidden rounded-glass-control border border-[rgb(var(--tg-border)/0.25)]">
+          <section className="overflow-hidden rounded-glass-control border border-wa-border">
             <button
               type="button"
               onClick={() => setAdvancedOpen((o) => !o)}
@@ -387,7 +387,7 @@ export function TodoAnalyzeSettingsDialog({
               <ChevronIcon open={advancedOpen} />
             </button>
             {advancedOpen && (
-              <div className="border-t border-[rgb(var(--tg-border)/0.2)] px-3 pb-3 pt-3">
+              <div className="border-t border-wa-border px-3 pb-3 pt-3">
                 <TodoAnalyzeSettingsForm
                   idPrefix="analyze-settings-modal-advanced"
                   values={draft}
@@ -404,7 +404,7 @@ export function TodoAnalyzeSettingsDialog({
           </section>
         </div>
 
-        <div className="flex shrink-0 flex-col gap-3 border-t border-[rgb(var(--tg-border))] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-wa-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 text-xs text-wa-text-secondary">
             {previewLoading && <span>Kosten werden geschätzt…</span>}
             {!previewLoading && footerCostUsd != null && chatIdsForPreview.length > 0 && (

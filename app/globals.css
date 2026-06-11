@@ -72,7 +72,7 @@ body {
   --tg-bg-accent: 204 251 241;
   --tg-surface: 255 255 255;
   --tg-surface-elevated: 255 255 255;
-  --tg-border: 255 255 255;
+  --tg-border: 229 231 235;
   --tg-blur: 24px;
   --tg-shadow: 0 4px 24px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04);
   --tg-shadow-lg: 0 12px 40px rgb(15 23 42 / 0.1), 0 2px 8px rgb(15 23 42 / 0.05);
@@ -84,7 +84,7 @@ body {
   --tg-bg-accent: 0 55 48;
   --tg-surface: 32 44 51;
   --tg-surface-elevated: 42 57 66;
-  --tg-border: 255 255 255;
+  --tg-border: 55 70 79;
   --tg-shadow: 0 4px 24px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.2);
   --tg-shadow-lg: 0 12px 40px rgb(0 0 0 / 0.45), 0 2px 8px rgb(0 0 0 / 0.25);
 }
@@ -100,32 +100,28 @@ body {
 
   .tg-panel {
     @apply flex min-h-0 flex-col overflow-hidden rounded-glass-panel border shadow-glass;
-    background: rgb(var(--tg-surface) / 0.72);
-    border-color: rgb(var(--tg-border) / 0.35);
+    background: rgb(var(--wa-panel) / 0.94);
+    border-color: rgb(var(--wa-border) / 0.9);
     backdrop-filter: blur(var(--tg-blur));
     -webkit-backdrop-filter: blur(var(--tg-blur));
   }
 
   .tg-surface {
     @apply rounded-glass-control border;
-    background: rgb(var(--tg-surface-elevated) / 0.55);
-    border-color: rgb(var(--tg-border) / 0.25);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgb(var(--wa-panel-secondary) / 0.92);
+    border-color: rgb(var(--wa-border) / 0.85);
   }
 
   .tg-surface-muted {
     @apply rounded-glass-control border;
-    background: rgb(var(--tg-surface-elevated) / 0.35);
-    border-color: rgb(var(--tg-border) / 0.15);
+    background: rgb(var(--wa-panel-secondary) / 0.75);
+    border-color: rgb(var(--wa-border) / 0.6);
   }
 
   .tg-input {
     @apply w-full rounded-glass-control border px-3 py-2 text-sm text-wa-text-primary placeholder:text-wa-text-secondary outline-none transition-colors;
-    background: rgb(var(--tg-surface-elevated) / 0.6);
-    border-color: rgb(var(--tg-border) / 0.3);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgb(var(--wa-input-bg) / 1);
+    border-color: rgb(var(--wa-border) / 1);
   }
 
   .tg-input:focus {
@@ -139,9 +135,9 @@ body {
   }
 
   .tg-btn-secondary {
-    @apply rounded-glass-control border px-3 py-2 text-sm font-medium text-wa-text-primary transition-colors hover:bg-white/10 disabled:opacity-50;
-    background: rgb(var(--tg-surface-elevated) / 0.5);
-    border-color: rgb(var(--tg-border) / 0.3);
+    @apply rounded-glass-control border px-3 py-2 text-sm font-medium text-wa-text-primary transition-colors hover:bg-wa-panel-secondary disabled:opacity-50;
+    background: rgb(var(--wa-panel) / 1);
+    border-color: rgb(var(--wa-border) / 1);
   }
 
   .tg-btn-ghost {
@@ -154,13 +150,13 @@ body {
 
   .tg-list-row {
     @apply flex w-full items-center justify-between rounded-glass-control border px-3 py-2.5 text-left text-sm transition-all;
-    background: rgb(var(--tg-surface-elevated) / 0.4);
-    border-color: rgb(var(--tg-border) / 0.2);
+    background: rgb(var(--wa-panel) / 0.88);
+    border-color: rgb(var(--wa-border) / 0.75);
   }
 
   .tg-list-row:hover {
-    background: rgb(var(--tg-surface-elevated) / 0.65);
-    border-color: rgb(var(--tg-border) / 0.35);
+    background: rgb(var(--wa-panel-secondary) / 1);
+    border-color: rgb(var(--wa-border) / 1);
   }
 
   .tg-list-row-selected {
@@ -180,8 +176,8 @@ body {
 
   .tg-segmented {
     @apply flex gap-0.5 rounded-glass-control border p-0.5;
-    background: rgb(var(--tg-surface-elevated) / 0.45);
-    border-color: rgb(var(--tg-border) / 0.25);
+    background: rgb(var(--wa-panel-secondary) / 1);
+    border-color: rgb(var(--wa-border) / 1);
   }
 
   .tg-segmented-item {
@@ -208,25 +204,21 @@ body {
 
   .tg-overlay {
     @apply fixed inset-0 z-40;
-    background: rgb(var(--wa-text-primary) / 0.25);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgb(var(--wa-text-primary) / 0.35);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
 
   .tg-modal {
     @apply rounded-2xl border shadow-glass-lg;
-    background: rgb(var(--tg-surface) / 0.85);
-    border-color: rgb(var(--tg-border) / 0.35);
-    backdrop-filter: blur(var(--tg-blur));
-    -webkit-backdrop-filter: blur(var(--tg-blur));
+    background: rgb(var(--wa-panel) / 1);
+    border-color: rgb(var(--wa-border) / 1);
   }
 
   .tg-popover {
     @apply rounded-glass-control border p-1 shadow-glass-lg;
-    background: rgb(var(--tg-surface) / 0.9);
-    border-color: rgb(var(--tg-border) / 0.35);
-    backdrop-filter: blur(var(--tg-blur));
-    -webkit-backdrop-filter: blur(var(--tg-blur));
+    background: rgb(var(--wa-panel) / 1);
+    border-color: rgb(var(--wa-border) / 1);
   }
 
   .tg-alert {
@@ -243,14 +235,14 @@ body {
 
   .tg-badge {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
-    background: rgb(var(--tg-surface-elevated) / 0.6);
-    border: 1px solid rgb(var(--tg-border) / 0.25);
+    background: rgb(var(--wa-panel-secondary) / 1);
+    border: 1px solid rgb(var(--wa-border) / 1);
   }
 
   .tg-chip {
     @apply rounded-full border px-2.5 py-1 text-xs font-medium transition-colors;
-    background: rgb(var(--tg-surface-elevated) / 0.45);
-    border-color: rgb(var(--tg-border) / 0.25);
+    background: rgb(var(--wa-panel) / 1);
+    border-color: rgb(var(--wa-border) / 1);
   }
 
   .tg-rich-text a {
