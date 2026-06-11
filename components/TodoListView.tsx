@@ -54,6 +54,7 @@ import {
   analyzeCostFromPayload,
   type AnalyzeCostSummary,
 } from "@/components/todo/AnalyzeCostBanner";
+import { AnalyzeSettingsTooltipWrap } from "@/components/todo/AnalyzeSettingsTooltipWrap";
 import { TodoCommandPalette, WORK_MODE_LABELS, type TodoCommandAction } from "@/components/todo/TodoCommandPalette";
 import {
   TodoGlassShell,
@@ -2831,25 +2832,26 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                     {selectedChatIds.length} Chats ausgewählt <span className="font-normal text-wa-text-secondary">(Esc zum Aufheben)</span>
                   </p>
                   <div className="mt-1.5 flex gap-1.5">
-                    <TodoGlassButton
-                      variant="primary"
-                      className="flex-1 text-xs"
-                      onClick={(e) => {
-                        if (e.shiftKey) {
-                          const ids = selectedChatIds.filter((id) => !ignoredChatIds.includes(id));
-                          openAnalyzeSettingsModal("selection", { targetChatIds: ids });
-                        } else {
-                          const preset = getLastTodoAnalyzePreset() ?? "daily_fast";
-                          quickRunWithPreset("selection", preset);
-                        }
-                      }}
-                      disabled={loadingAllSuggestions}
-                      title={selectionAnalyzeTooltip}
-                    >
-                      {loadingAllSuggestions && loadingAllProgress
-                        ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
-                        : "Auswahl analysieren"}
-                    </TodoGlassButton>
+                    <AnalyzeSettingsTooltipWrap content={selectionAnalyzeTooltip} className="min-w-0 flex-1">
+                      <TodoGlassButton
+                        variant="primary"
+                        className="w-full text-xs"
+                        onClick={(e) => {
+                          if (e.shiftKey) {
+                            const ids = selectedChatIds.filter((id) => !ignoredChatIds.includes(id));
+                            openAnalyzeSettingsModal("selection", { targetChatIds: ids });
+                          } else {
+                            const preset = getLastTodoAnalyzePreset() ?? "daily_fast";
+                            quickRunWithPreset("selection", preset);
+                          }
+                        }}
+                        disabled={loadingAllSuggestions}
+                      >
+                        {loadingAllSuggestions && loadingAllProgress
+                          ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
+                          : "Auswahl analysieren"}
+                      </TodoGlassButton>
+                    </AnalyzeSettingsTooltipWrap>
                     {loadingAllSuggestions && (
                       <TodoGlassButton
                         variant="destructive"
@@ -2864,31 +2866,33 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 </TodoGlassSection>
               )}
               <TodoGlassSection label="Aktionen">
-                <TodoGlassButton
-                  variant="secondary"
-                  fullWidth
-                  onClick={(e) => handleBatchAnalyzeClick(e, "all")}
-                  disabled={loadingAllSuggestions || batchTargetChats.length === 0}
-                  title={batchAnalyzeTooltip}
-                  className="text-xs"
-                >
-                  {loadingAllSuggestions && loadingAllProgress
-                    ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
-                    : `Vorschläge für ${formatChatCountLabel(batchTargetChats.length)} laden`}
-                </TodoGlassButton>
-                <TodoGlassButton
-                  variant="secondary"
-                  fullWidth
-                  className="mt-1.5 text-xs text-blue-700 dark:text-blue-300"
-                  onClick={() => {
-                    if (batchTargetChats.length === 0) return;
-                    openAnalyzeSettingsModal("one-prompt", { targetChatIds: batchTargetChatIds });
-                  }}
-                  disabled={loadingAllSuggestions || batchTargetChats.length === 0}
-                  title={onePromptAnalyzeTooltip}
-                >
-                  One-Prompt für {formatChatCountLabel(batchTargetChats.length)}
-                </TodoGlassButton>
+                <AnalyzeSettingsTooltipWrap content={batchAnalyzeTooltip} className="w-full">
+                  <TodoGlassButton
+                    variant="secondary"
+                    fullWidth
+                    onClick={(e) => handleBatchAnalyzeClick(e, "all")}
+                    disabled={loadingAllSuggestions || batchTargetChats.length === 0}
+                    className="text-xs"
+                  >
+                    {loadingAllSuggestions && loadingAllProgress
+                      ? `Analysiere ${loadingAllProgress.done}/${loadingAllProgress.total} Chats…`
+                      : `Vorschläge für ${formatChatCountLabel(batchTargetChats.length)} laden`}
+                  </TodoGlassButton>
+                </AnalyzeSettingsTooltipWrap>
+                <AnalyzeSettingsTooltipWrap content={onePromptAnalyzeTooltip} className="mt-1.5 w-full">
+                  <TodoGlassButton
+                    variant="secondary"
+                    fullWidth
+                    className="text-xs text-blue-700 dark:text-blue-300"
+                    onClick={() => {
+                      if (batchTargetChats.length === 0) return;
+                      openAnalyzeSettingsModal("one-prompt", { targetChatIds: batchTargetChatIds });
+                    }}
+                    disabled={loadingAllSuggestions || batchTargetChats.length === 0}
+                  >
+                    One-Prompt für {formatChatCountLabel(batchTargetChats.length)}
+                  </TodoGlassButton>
+                </AnalyzeSettingsTooltipWrap>
                 {loadingAllSuggestions && loadingAllProgress && (
                   <>
                     <p className="mt-2 text-xs text-wa-text-secondary">
@@ -3253,15 +3257,16 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
                 onChange={setAnalyzeCacheForce}
               />
               <div className="flex gap-2">
-                <TodoGlassButton
-                  variant="primary"
-                  className="flex-1"
-                  onClick={handleSingleAnalyzeClick}
-                  disabled={isCurrentChatAnalyzing}
-                  title={singleAnalyzeTooltip}
-                >
-                  {isCurrentChatAnalyzing ? "Analysiere…" : "Todo-Vorschläge laden"}
-                </TodoGlassButton>
+                <AnalyzeSettingsTooltipWrap content={singleAnalyzeTooltip} className="min-w-0 flex-1">
+                  <TodoGlassButton
+                    variant="primary"
+                    className="w-full"
+                    onClick={handleSingleAnalyzeClick}
+                    disabled={isCurrentChatAnalyzing}
+                  >
+                    {isCurrentChatAnalyzing ? "Analysiere…" : "Todo-Vorschläge laden"}
+                  </TodoGlassButton>
+                </AnalyzeSettingsTooltipWrap>
                 {isCurrentChatAnalyzing && (
                   <button
                     type="button"
