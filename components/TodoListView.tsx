@@ -71,6 +71,8 @@ import { buildAppUrl } from "@/lib/app-routes";
 import {
   applyTodoAnalyzePreset,
   getLastTodoAnalyzePreset,
+  resolveQuickRunAnalyzeSettings,
+  setLastTodoAnalyzePreset,
   suggestPresetForChat,
   type TodoAnalyzePresetId,
 } from "@/lib/todo-analyze-presets";
@@ -2053,10 +2055,7 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
 
   const quickRunWithPreset = useCallback(
     (mode: AnalyzeSettingsModalMode, presetId: TodoAnalyzePresetId, targetChats?: BeeperChat[]) => {
-      const draft =
-        presetId === "custom"
-          ? getAnalyzeSettings()
-          : applyTodoAnalyzePreset(presetId, getAnalyzeSettings());
+      const draft = resolveQuickRunAnalyzeSettings(presetId, getAnalyzeSettings());
       applyAnalyzeSettings(draft);
       if (mode === "all" || mode === "one-prompt") {
         void runAnalyzeForAllVisible(draft, undefined, targetChats ?? batchTargetChats);

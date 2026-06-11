@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyTodoAnalyzePreset, detectPresetFromValues, suggestPresetForChat } from "@/lib/todo-analyze-presets";
+import {
+  applyTodoAnalyzePreset,
+  detectPresetFromValues,
+  resolveQuickRunAnalyzeSettings,
+  suggestPresetForChat,
+} from "@/lib/todo-analyze-presets";
 import type { TodoAnalyzeSettingsValues } from "@/components/todo/TodoAnalyzeSettingsForm";
 
 const base: TodoAnalyzeSettingsValues = {
@@ -26,5 +31,22 @@ describe("todo-analyze-presets", () => {
 
   it("suggestPresetForChat prefers thorough for groups", () => {
     expect(suggestPresetForChat({ id: "1", type: "group" } as never)).toBe("thorough");
+  });
+
+  it("resolveQuickRunAnalyzeSettings keeps custom values unchanged", () => {
+    const custom: TodoAnalyzeSettingsValues = {
+      ...base,
+      maxMessages: 12,
+      maxAgeValue: 14,
+      attachmentMode: "full",
+    };
+    const out = resolveQuickRunAnalyzeSettings("custom", custom);
+    expect(out).toEqual(custom);
+  });
+
+  it("resolveQuickRunAnalyzeSettings applies named presets", () => {
+    const out = resolveQuickRunAnalyzeSettings("thorough", base);
+    expect(out.attachmentMode).toBe("full");
+    expect(out.maxMessages).toBe(50);
   });
 });

@@ -102,12 +102,11 @@ export function TodoAnalyzeSettingsDialog({
     if (!open) return;
     const last = getLastTodoAnalyzePreset();
     const detected = initialPresetId ?? last ?? detectPresetFromValues(draft);
-    const id = detected === "custom" ? detectPresetFromValues(draft) : detected;
-    setPresetId(id);
-    if (id !== "custom" && id !== detectPresetFromValues(draft)) {
-      onDraftChange(applyTodoAnalyzePreset(id, draft));
+    setPresetId(detected);
+    if (detected !== "custom" && detected !== detectPresetFromValues(draft)) {
+      onDraftChange(applyTodoAnalyzePreset(detected, draft));
     }
-    setAdvancedOpen(id === "custom");
+    setAdvancedOpen(detected === "custom");
   }, [open, initialPresetId]);
 
   useEffect(() => {
