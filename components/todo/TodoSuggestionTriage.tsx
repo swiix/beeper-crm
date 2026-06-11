@@ -113,7 +113,7 @@ export function TodoSuggestionTriage({
 
   return (
     <div className="flex flex-col items-center px-2 py-4">
-      <div className="mb-4 w-full max-w-md">
+      <div className="mb-4 w-full max-w-xl">
         <div className="mb-1.5 flex items-center justify-between text-xs text-wa-text-secondary">
           <span>
             Vorschlag <span className="font-medium text-wa-text-primary">{cursor + 1}</span> von{" "}
@@ -139,12 +139,12 @@ export function TodoSuggestionTriage({
           onOpenChat={onOpenChat}
         />
       ) : (
-        <div className="w-full max-w-md rounded-2xl border border-wa-border bg-wa-panel-secondary/60 p-5">
+        <div className="w-full max-w-xl rounded-2xl border border-wa-border bg-wa-panel-secondary/60 p-5">
           <p className="text-base font-semibold text-wa-text-primary">{current.suggestion.title}</p>
         </div>
       )}
 
-      <div className="mt-5 flex w-full max-w-md flex-wrap justify-center gap-2">
+      <div className="mt-5 flex w-full max-w-xl flex-wrap justify-center gap-2">
         {onOpenChat && (
           <button
             type="button"
@@ -179,7 +179,7 @@ export function TodoSuggestionTriage({
         </button>
       </div>
 
-      <p className="mt-4 max-w-md text-center text-[11px] leading-relaxed text-wa-text-secondary">
+      <p className="mt-4 max-w-xl text-center text-[11px] leading-relaxed text-wa-text-secondary">
         {editingField ? (
           <>Feld bearbeiten · Esc speichern &amp; schließen · Shortcuts pausiert</>
         ) : (

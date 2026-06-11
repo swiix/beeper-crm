@@ -315,7 +315,7 @@ export function TodoSuggestionTriageCard({
   return (
     <div
       ref={cardRef}
-      className="w-full max-w-md overflow-hidden tg-panel shadow-glass"
+      className="w-full max-w-xl overflow-hidden tg-panel shadow-glass"
     >
       <div className="space-y-1 p-2">
         {onChatNameChange && (
