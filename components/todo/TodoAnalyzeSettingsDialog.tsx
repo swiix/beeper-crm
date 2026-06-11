@@ -16,7 +16,7 @@ import {
   type TodoAnalyzeSettingsValues,
 } from "@/components/todo/TodoAnalyzeSettingsForm";
 import { buildAnalyzeRequestFields } from "@/components/todo/TodoAnalyzeSettingsForm";
-import { formatAnalyzeCostUsd } from "@/lib/openai-cost";
+import { formatAnalyzeCostUsd, estimateAnalyzeBatchCostUsd } from "@/lib/openai-cost";
 
 export type AnalyzeSettingsModalMode = "all" | "selection" | "single" | "one-prompt";
 
@@ -186,7 +186,23 @@ export function TodoAnalyzeSettingsDialog({
   }, [draft]);
 
   const estimatedCostUsd =
-    typeof preview?.estimated_cost_usd === "number" ? preview.estimated_cost_usd : null;
+    typeof preview?.estimated_cost_usd === "number"
+      ? preview.estimated_cost_usd
+      : chatIdsForPreview.length > 0 && !previewLoading
+        ? estimateAnalyzeBatchCostUsd({
+            chatsToAnalyze: chatIdsForPreview.length,
+            maxMessages: draft.maxMessages,
+            attachmentMode: draft.attachmentMode === "fast" ? "fast" : "full",
+          })
+        : null;
+
+  const footerCostUsd =
+    preview && !previewLoading && typeof preview.estimated_cost_usd === "number"
+      ? preview.estimated_cost_usd
+      : estimatedCostUsd;
+
+  const footerApiCalls =
+    preview && !previewLoading ? preview.needsAnalyze : chatIdsForPreview.length;
 
   if (!open) return null;
 
@@ -360,18 +376,18 @@ export function TodoAnalyzeSettingsDialog({
             </section>
           )}
 
-          <section>
+          <section className="overflow-hidden rounded-glass-control border border-[rgb(var(--tg-border)/0.25)]">
             <button
               type="button"
               onClick={() => setAdvancedOpen((o) => !o)}
               aria-expanded={advancedOpen}
-              className="flex w-full items-center justify-between rounded-glass-control border border-[rgb(var(--tg-border)/0.25)] px-3 py-2.5 text-left text-xs font-medium text-wa-text-secondary transition-colors hover:bg-white/5"
+              className="flex w-full items-center justify-between px-3 py-2.5 text-left text-xs font-medium text-wa-text-secondary transition-colors hover:bg-white/5"
             >
               <span>Erweiterte Einstellungen</span>
               <ChevronIcon open={advancedOpen} />
             </button>
             {advancedOpen && (
-              <div className="mt-2 rounded-glass-control border border-[rgb(var(--tg-border)/0.2)] p-3">
+              <div className="border-t border-[rgb(var(--tg-border)/0.2)] px-3 pb-3 pt-3">
                 <TodoAnalyzeSettingsForm
                   idPrefix="analyze-settings-modal-advanced"
                   values={draft}
@@ -380,28 +396,37 @@ export function TodoAnalyzeSettingsDialog({
                     setPresetId("custom");
                   }}
                   showOnePrompt={false}
-                  showPromptSuffix={showOnePrompt}
+                  showPromptSuffix={false}
+                  compactLayout
                 />
               </div>
             )}
           </section>
         </div>
 
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[rgb(var(--tg-border))] px-5 py-4">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-[rgb(var(--tg-border))] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 text-xs text-wa-text-secondary">
-            {preview && !previewLoading && estimatedCostUsd != null && (
+            {previewLoading && <span>Kosten werden geschätzt…</span>}
+            {!previewLoading && footerCostUsd != null && chatIdsForPreview.length > 0 && (
               <>
                 Geschätzt{" "}
-                <span className="font-semibold text-wa-green">{formatAnalyzeCostUsd(estimatedCostUsd)} USD</span>
-                {preview.needsAnalyze > 0 && (
+                <span className="font-semibold text-wa-green">{formatAnalyzeCostUsd(footerCostUsd)} USD</span>
+                {preview && !previewError ? (
                   <span className="text-wa-text-secondary/80">
                     {" "}
                     · {preview.needsAnalyze.toLocaleString("de-DE")} API-Calls
                   </span>
+                ) : (
+                  <span className="text-wa-text-secondary/80">
+                    {" "}
+                    · bis zu {footerApiCalls.toLocaleString("de-DE")} Chats
+                  </span>
+                )}
+                {previewError && (
+                  <span className="text-wa-text-secondary/70"> (Schätzung, Vorschau nicht verfügbar)</span>
                 )}
               </>
             )}
-            {previewLoading && <span className="text-wa-text-secondary/80">Kosten werden geschätzt…</span>}
           </div>
           <div className="flex shrink-0 gap-2">
             <button type="button" onClick={onClose} className="tg-btn-secondary px-4 py-2 text-sm">

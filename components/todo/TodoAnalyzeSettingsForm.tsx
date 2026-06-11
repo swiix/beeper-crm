@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { clampChatMessageCount } from "@/lib/chat-message-limits";
 import type {
   TodoAnalyzeAttachmentMode,
@@ -49,11 +49,21 @@ type TodoAnalyzeSettingsFormProps = {
   idPrefix: string;
   showOnePrompt?: boolean;
   showPromptSuffix?: boolean;
+  /** Single-column layout for narrow containers (e.g. analyze modal). */
+  compactLayout?: boolean;
   preview?: {
     selectedChatCount: number;
     visibleChatCount: number;
   };
 };
+
+function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: ReactNode }) {
+  return (
+    <label htmlFor={htmlFor} className="mb-1 block text-xs font-medium text-wa-text-secondary">
+      {children}
+    </label>
+  );
+}
 
 export function TodoAnalyzeSettingsForm({
   values,
@@ -61,6 +71,7 @@ export function TodoAnalyzeSettingsForm({
   idPrefix,
   showOnePrompt = true,
   showPromptSuffix = true,
+  compactLayout = false,
   preview,
 }: TodoAnalyzeSettingsFormProps) {
   const maxAgeDays = useMemo(
@@ -70,61 +81,62 @@ export function TodoAnalyzeSettingsForm({
 
   const scanSummary =
     values.scanMode === "both"
-      ? `max ${values.maxMessages} Nachrichten und max ${maxAgeDays} Tage`
+      ? `max. ${values.maxMessages} Nachrichten und max. ${maxAgeDays} Tage`
       : values.scanMode === "age"
         ? `nur Nachrichten aus den letzten ${maxAgeDays} Tagen`
         : `nur die letzten ${values.maxMessages} Nachrichten`;
+
+  const gridClass = compactLayout ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 gap-3 md:grid-cols-3";
 
   return (
     <div className="space-y-3">
       {showPromptSuffix && (
         <div>
-          <label htmlFor={`${idPrefix}-prompt-suffix`} className="block text-xs font-medium text-wa-text-secondary">
-            Zusatz zum Prompt (wird an den System-Prompt angehängt)
-          </label>
+          <FieldLabel htmlFor={`${idPrefix}-prompt-suffix`}>Zusatz zum Prompt</FieldLabel>
           <textarea
             id={`${idPrefix}-prompt-suffix`}
-            placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
+            placeholder="z. B. nur geschäftliche Todos, keine Duplikate"
             value={values.promptSuffix}
             onChange={(e) => onChange({ promptSuffix: e.target.value })}
             rows={2}
-            className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+            className="tg-input min-h-[3.5rem] resize-y"
           />
         </div>
       )}
       {showOnePrompt && (
         <div>
-          <label htmlFor={`${idPrefix}-one-prompt`} className="block text-xs font-medium text-wa-text-secondary">
-            One-Prompt (nur für „One-Prompt auf alle sichtbaren Chats“)
-          </label>
+          <FieldLabel htmlFor={`${idPrefix}-one-prompt`}>One-Prompt</FieldLabel>
           <textarea
             id={`${idPrefix}-one-prompt`}
-            placeholder="Freier Prompt für alle Chats. Nur Ergebnisse aus diesem Prompt werden übernommen."
+            placeholder="Freier Prompt für alle Chats…"
             value={values.onePromptAllChats}
             onChange={(e) => onChange({ onePromptAllChats: e.target.value })}
             rows={4}
-            className="mt-1 w-full rounded-lg border border-blue-400/30 bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-blue-400 focus:outline-none"
+            className="tg-input min-h-[5rem] resize-y border-blue-400/30 focus:border-blue-400 focus:ring-blue-400/20"
           />
         </div>
       )}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <label className="block text-xs text-wa-text-secondary">
-          Analyse-Modus
+
+      <div className={gridClass}>
+        <div>
+          <FieldLabel htmlFor={`${idPrefix}-scan-mode`}>Analyse-Modus</FieldLabel>
           <select
+            id={`${idPrefix}-scan-mode`}
             value={values.scanMode}
             onChange={(e) => onChange({ scanMode: e.target.value as TodoAnalyzeScanMode })}
-            title="Nach Alter, Nachrichtenanzahl oder beidem filtern"
-            className="mt-1 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
+            className="tg-input py-1.5"
           >
             <option value="both">Beides (Alter + Anzahl)</option>
             <option value="age">Nur Alter</option>
             <option value="count">Nur Anzahl</option>
           </select>
-        </label>
-        <label className="block text-xs text-wa-text-secondary">
-          Max. Alter
-          <div className="mt-1 flex gap-1">
+        </div>
+
+        <div>
+          <FieldLabel htmlFor={`${idPrefix}-max-age`}>Max. Alter</FieldLabel>
+          <div className="flex gap-2">
             <input
+              id={`${idPrefix}-max-age`}
               type="number"
               min={1}
               value={values.maxAgeValue}
@@ -133,24 +145,26 @@ export function TodoAnalyzeSettingsForm({
                 onChange({ maxAgeValue: v });
               }}
               disabled={values.scanMode === "count"}
-              className="w-20 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
+              className="tg-input w-20 shrink-0 py-1.5 disabled:opacity-50"
             />
             <select
               value={values.maxAgeUnit}
               onChange={(e) => onChange({ maxAgeUnit: e.target.value as TodoAnalyzeMaxAgeUnit })}
               disabled={values.scanMode === "count"}
-              title="Einheit für maximales Nachrichtsalter"
-              className="flex-1 rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
+              aria-label="Einheit für maximales Nachrichtsalter"
+              className="tg-input min-w-0 flex-1 py-1.5 disabled:opacity-50"
             >
               <option value="days">Tage</option>
               <option value="weeks">Wochen</option>
               <option value="months">Monate</option>
             </select>
           </div>
-        </label>
-        <label className="block text-xs text-wa-text-secondary">
-          Letzte X Nachrichten (max. 50)
+        </div>
+
+        <div>
+          <FieldLabel htmlFor={`${idPrefix}-max-messages`}>Letzte Nachrichten (max. 50)</FieldLabel>
           <input
+            id={`${idPrefix}-max-messages`}
             type="number"
             min={0}
             max={50}
@@ -160,23 +174,24 @@ export function TodoAnalyzeSettingsForm({
               onChange({ maxMessages: n });
             }}
             disabled={values.scanMode === "age"}
-            className="mt-1 w-full rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary disabled:opacity-50"
+            className="tg-input py-1.5 disabled:opacity-50"
           />
-        </label>
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
-          <span>Analyse-Tiefe</span>
+
+      <div className={compactLayout ? "space-y-3" : "flex flex-wrap items-center gap-3"}>
+        <div className={compactLayout ? "w-full" : undefined}>
+          <FieldLabel htmlFor={`${idPrefix}-attachment-mode`}>Analyse-Tiefe</FieldLabel>
           <select
+            id={`${idPrefix}-attachment-mode`}
             value={values.attachmentMode}
             onChange={(e) => onChange({ attachmentMode: e.target.value as TodoAnalyzeAttachmentMode })}
-            title="Schnell: nur Text; Vollständig: inkl. Bilder/Audio (mehr Kosten)"
-            className="rounded border border-wa-border bg-wa-input-bg px-2 py-1 text-sm text-wa-text-primary"
+            className="tg-input w-full py-1.5"
           >
             <option value="fast">Schnell (ohne Bilder/Audio)</option>
             <option value="full">Vollständig (mit Bilder/Audio)</option>
           </select>
-        </label>
+        </div>
         <label className="inline-flex items-center gap-2 text-xs text-wa-text-secondary">
           <input
             type="checkbox"
@@ -187,11 +202,11 @@ export function TodoAnalyzeSettingsForm({
           Cache ignorieren (Erzwingen)
         </label>
       </div>
+
       <p className="text-[11px] text-wa-text-secondary">Aktuell: {scanSummary}.</p>
       {preview && (
         <p className="text-[11px] text-wa-text-secondary">
-          Vorschau: Wird analysiert mit {values.attachmentMode === "fast" ? "Schnell-Modus" : "Vollständig-Modus"}
-          ; Auswahl: {preview.selectedChatCount} Chat(s), Sichtbar: {preview.visibleChatCount} Chat(s), Force:{" "}
+          Auswahl: {preview.selectedChatCount} Chat(s), sichtbar: {preview.visibleChatCount} Chat(s), Force:{" "}
           {values.analyzeForce ? "ja" : "nein"}.
         </p>
       )}
