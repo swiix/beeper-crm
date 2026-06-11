@@ -1314,6 +1314,15 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
     return baseIds.filter((id) => !ignoredChatIds.includes(id)).length;
   }, [selectedChatIds, selectedChatId, ignoredChatIds]);
 
+  const clearAllSuggestionsForChat = useCallback((chatId: string) => {
+    setSuggestionsByChat((prev) => {
+      schedulePersistRef.current(chatId, []);
+      return { ...prev, [chatId]: [] };
+    });
+    setSuggestionContextMenu(null);
+    if (editingSuggestion?.chatId === chatId) setEditingSuggestion(null);
+  }, [editingSuggestion]);
+
   const ignoreChatForFutureSuggestions = useCallback((chatId: string) => {
     updateIgnoredChatIds((prev) => (prev.includes(chatId) ? prev : [...prev, chatId]));
     setSuggestionsByChat((prev) => {
@@ -1321,11 +1330,12 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
       return { ...prev, [chatId]: [] };
     });
     setSuggestionContextMenu(null);
+    if (editingSuggestion?.chatId === chatId) setEditingSuggestion(null);
     if (selectedChatId === chatId) {
       setSelectedChatId(ALL_CHATS_SENTINEL);
       setSelectedChatIds([]);
     }
-  }, [selectedChatId, updateIgnoredChatIds]);
+  }, [selectedChatId, updateIgnoredChatIds, editingSuggestion]);
 
   const chatIds = chats.map((c) => c.id).filter(Boolean);
   const { data: countByChat = {}, mutate: mutateCount } = useSWR<Record<string, number>>(
@@ -4371,9 +4381,17 @@ export function TodoListView({ onOpenChat }: { onOpenChat: (chatId: string, acco
             variant="ghost"
             fullWidth
             className="justify-start text-sm"
+            onClick={() => clearAllSuggestionsForChat(suggestionContextMenu.chatId)}
+          >
+            Alle Vorschläge dieses Chats löschen
+          </TodoGlassButton>
+          <TodoGlassButton
+            variant="ghost"
+            fullWidth
+            className="justify-start text-sm text-red-700 dark:text-red-300"
             onClick={() => ignoreChatForFutureSuggestions(suggestionContextMenu.chatId)}
           >
-            Kontakt für zukünftige Analysen ignorieren und alle Vorschläge dieses Kontakts löschen
+            Für künftige Analysen ignorieren (inkl. alle Vorschläge löschen)
           </TodoGlassButton>
         </div>
       )}

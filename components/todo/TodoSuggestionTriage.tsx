@@ -198,7 +198,7 @@ export function TodoSuggestionTriage({
           <>
             Auf Chat, Titel, Frist oder Details tippen zum Bearbeiten · J ablehnen · K annehmen
             {onOpenChat ? " · C zum Chat springen" : ""}
-            {onChatContextMenu ? " · Rechtsklick: Chat ignorieren" : ""}
+            {onChatContextMenu ? " · Rechtsklick: Vorschläge löschen / ignorieren" : ""}
           </>
         )}
       </p>
