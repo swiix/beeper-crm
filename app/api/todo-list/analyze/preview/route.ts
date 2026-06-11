@@ -7,6 +7,7 @@ import { createLogger } from "@/lib/logger";
 import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import { todoAnalysisBeeperJson } from "@/lib/todo-list-analysis-trace-log";
 import type { TodoAnalyzeSettingsValues } from "@/components/todo/TodoAnalyzeSettingsForm";
+import { estimateAnalyzeBatchCostUsd } from "@/lib/openai-cost";
 import {
   estimateAnalyzeMinutes,
   isTodoAnalysisCacheFresh,
@@ -93,6 +94,11 @@ export async function POST(request: NextRequest) {
 
     const total = chatIds.length;
     const estimatedMinutes = estimateAnalyzeMinutes(needsAnalyze);
+    const estimated_cost_usd = estimateAnalyzeBatchCostUsd({
+      chatsToAnalyze: needsAnalyze,
+      maxMessages: resolved.maxMessages,
+      attachmentMode: resolved.attachmentMode,
+    });
 
     return NextResponse.json({
       total,
@@ -102,6 +108,7 @@ export async function POST(request: NextRequest) {
       cacheFresh,
       needsAnalyze,
       estimatedMinutes,
+      estimated_cost_usd,
       attachmentMode: resolved.attachmentMode,
       force: resolved.force,
       onePromptMode: resolved.onePromptMode,

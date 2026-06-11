@@ -48,6 +48,7 @@ type TodoAnalyzeSettingsFormProps = {
   onChange: (patch: Partial<TodoAnalyzeSettingsValues>) => void;
   idPrefix: string;
   showOnePrompt?: boolean;
+  showPromptSuffix?: boolean;
   preview?: {
     selectedChatCount: number;
     visibleChatCount: number;
@@ -59,6 +60,7 @@ export function TodoAnalyzeSettingsForm({
   onChange,
   idPrefix,
   showOnePrompt = true,
+  showPromptSuffix = true,
   preview,
 }: TodoAnalyzeSettingsFormProps) {
   const maxAgeDays = useMemo(
@@ -75,19 +77,21 @@ export function TodoAnalyzeSettingsForm({
 
   return (
     <div className="space-y-3">
-      <div>
-        <label htmlFor={`${idPrefix}-prompt-suffix`} className="block text-xs font-medium text-wa-text-secondary">
-          Zusatz zum Prompt (wird an den System-Prompt angehängt)
-        </label>
-        <textarea
-          id={`${idPrefix}-prompt-suffix`}
-          placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
-          value={values.promptSuffix}
-          onChange={(e) => onChange({ promptSuffix: e.target.value })}
-          rows={2}
-          className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
-        />
-      </div>
+      {showPromptSuffix && (
+        <div>
+          <label htmlFor={`${idPrefix}-prompt-suffix`} className="block text-xs font-medium text-wa-text-secondary">
+            Zusatz zum Prompt (wird an den System-Prompt angehängt)
+          </label>
+          <textarea
+            id={`${idPrefix}-prompt-suffix`}
+            placeholder="z. B. Berücksichtige nur geschäftliche Todos. Ignoriere private Verabredungen."
+            value={values.promptSuffix}
+            onChange={(e) => onChange({ promptSuffix: e.target.value })}
+            rows={2}
+            className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-2 py-1.5 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
+          />
+        </div>
+      )}
       {showOnePrompt && (
         <div>
           <label htmlFor={`${idPrefix}-one-prompt`} className="block text-xs font-medium text-wa-text-secondary">

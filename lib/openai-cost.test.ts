@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAnalyzeUsageCostMeta,
+  estimateAnalyzeBatchCostUsd,
   estimateOpenAiUsageUsd,
   formatAnalyzeCostUsd,
   readAnalyzeCostUsd,
@@ -45,5 +46,28 @@ describe("readAnalyzeCostUsd", () => {
     expect(readAnalyzeCostUsd({ estimated_cost_usd: 0.0042 })).toBe(0.0042);
     expect(readAnalyzeCostUsd({ estimated_cost_usd: "x" })).toBe(0);
     expect(readAnalyzeCostUsd(null)).toBe(0);
+  });
+});
+
+describe("estimateAnalyzeBatchCostUsd", () => {
+  it("returns zero when no chats need analysis", () => {
+    expect(
+      estimateAnalyzeBatchCostUsd({ chatsToAnalyze: 0, maxMessages: 30, attachmentMode: "fast" })
+    ).toBe(0);
+  });
+
+  it("scales with chat count and attachment mode", () => {
+    const fast = estimateAnalyzeBatchCostUsd({
+      chatsToAnalyze: 10,
+      maxMessages: 30,
+      attachmentMode: "fast",
+    });
+    const full = estimateAnalyzeBatchCostUsd({
+      chatsToAnalyze: 10,
+      maxMessages: 30,
+      attachmentMode: "full",
+    });
+    expect(fast).toBeGreaterThan(0);
+    expect(full).toBeGreaterThan(fast);
   });
 });

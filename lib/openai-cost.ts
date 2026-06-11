@@ -71,6 +71,28 @@ export function buildAnalyzeUsageCostMeta(
   };
 }
 
+/** Rough USD estimate for batch todo analyze (gpt-4o-mini). */
+export function estimateAnalyzeBatchCostUsd(params: {
+  chatsToAnalyze: number;
+  maxMessages: number;
+  attachmentMode: "fast" | "full";
+}): number {
+  const chats = Math.max(0, Math.round(params.chatsToAnalyze));
+  if (chats === 0) return 0;
+  const msgs = Math.max(1, Math.min(50, Math.round(params.maxMessages || 30)));
+  const attachmentFactor = params.attachmentMode === "full" ? 2.2 : 1;
+  const promptTokensPerChat = Math.round((1200 + msgs * 100) * attachmentFactor);
+  const completionTokensPerChat = 350;
+  return estimateOpenAiUsageUsd({
+    model: TODO_ANALYZE_MODEL,
+    usage: {
+      prompt_tokens: promptTokensPerChat * chats,
+      completion_tokens: completionTokensPerChat * chats,
+      total_tokens: (promptTokensPerChat + completionTokensPerChat) * chats,
+    },
+  });
+}
+
 /** Human-readable USD for scan notifications. */
 export function formatAnalyzeCostUsd(usd: number): string {
   if (!Number.isFinite(usd) || usd <= 0) return "$0.00";
