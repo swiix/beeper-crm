@@ -33,6 +33,7 @@ import {
   type BeeperMessagesResponse,
 } from "@/lib/beeper-chat-messages";
 import { getOpenAiApiKey } from "@/lib/api-keys-settings";
+import { OPENAI_API_KEY_MISSING } from "@/lib/api-keys-errors";
 
 const log = createLogger("api:todo-list:analyze");
 
@@ -600,14 +601,14 @@ export async function POST(request: NextRequest) {
               ? `Heutiges Datum: ${today}.\n\nONE-PROMPT:\n${onePrompt}\n\n${contactLine}Chat-Verlauf (Datum pro Nachricht; Sprachnachrichten transkribiert; Bilder per KI beschrieben):\n${transcript}`
               : `Heutiges Datum: ${today}.\n\n${contactLine}Chat-Verlauf (Datum pro Nachricht; Sprachnachrichten transkribiert; Bilder per KI beschrieben):\n${transcript}`;
             if (!getOpenAiApiKey()) {
-              const errLine = JSON.stringify({ type: "error", error: "OpenAI API key not configured" }) + "\n";
+              const errLine = JSON.stringify({ type: "error", error: OPENAI_API_KEY_MISSING }) + "\n";
               appendTodoAnalysisTrace({
                 ts: new Date().toISOString(),
                 chatId: chatIdValue,
                 accountId,
                 requestId,
                 phase: "openai_skipped",
-                error: "OpenAI API key not configured",
+                error: OPENAI_API_KEY_MISSING,
                 response: { ndjsonPreview: errLine },
               });
               controller.enqueue(encoder.encode(errLine));
@@ -873,14 +874,14 @@ export async function POST(request: NextRequest) {
         accountId,
         requestId,
         phase: "openai_skipped",
-        error: "OpenAI API key not configured",
+        error: OPENAI_API_KEY_MISSING,
         response: { httpStatus: 502 },
       });
       logTodoListAnalysisError(
         { chatId, accountId, contactName, messageCount: messages.length, transcriptLength: transcript.length, body: { chatId, accountId, contactName } },
-        { status: 502, error: "OpenAI API key not configured" }
+        { status: 502, error: OPENAI_API_KEY_MISSING }
       );
-      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 502 });
+      return NextResponse.json({ error: OPENAI_API_KEY_MISSING }, { status: 502 });
     }
 
     log.info({ chatId, messageCount: messages.length }, "todo-list analyze OpenAI call");

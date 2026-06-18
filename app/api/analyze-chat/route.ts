@@ -21,6 +21,7 @@ import {
   type BeeperMessagesResponse,
 } from "@/lib/beeper-chat-messages";
 import { getOpenAiApiKey } from "@/lib/api-keys-settings";
+import { OPENAI_API_KEY_MISSING } from "@/lib/api-keys-errors";
 
 const log = createLogger("api:analyze");
 const ANALYSIS_MESSAGE_LIMIT = MAX_CHAT_MESSAGES;
@@ -200,7 +201,7 @@ function trimToTokenBudget(text: string, maxTokens: number): string {
 
 async function callOpenAiJson(systemPrompt: string, userContent: string): Promise<Record<string, unknown>> {
   const openAiApiKey = getOpenAiApiKey();
-  if (!openAiApiKey) throw new Error("OpenAI API key not configured");
+  if (!openAiApiKey) throw new Error(OPENAI_API_KEY_MISSING);
   const systemTokens = estimateTokens(systemPrompt);
   const userTokens = estimateTokens(userContent);
   if (systemTokens + userTokens > SAFE_REQUEST_INPUT_TOKENS) {
@@ -399,7 +400,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!getOpenAiApiKey()) {
     return NextResponse.json(
-      { error: "OpenAI API key not configured. Set it in Settings → API-Schlüssel." },
+      { error: OPENAI_API_KEY_MISSING },
       { status: 503 }
     );
   }

@@ -16,6 +16,8 @@ import { SettingsView } from "./SettingsView";
 import { TinderChatView } from "./TinderChatView";
 import { TodoListView } from "./TodoListView";
 import { SettingsProvider } from "./SettingsContext";
+import { ApiKeysSetupBanner } from "./ApiKeysSetupBanner";
+import { apiKeyRequirementsForView } from "@/lib/api-keys-ui";
 
 const DEFAULT_DOCUMENT_TITLE = "Beeper CRM – Instagram Akquise & Sales";
 const TODO_DOCUMENT_TITLE = "Todo Chat";
@@ -33,6 +35,7 @@ export function AppLayout({ children: _children }: { children?: React.ReactNode 
 
   const [focusChatId, setFocusChatId] = useState<string | null>(null);
   const [focusAccountId, setFocusAccountId] = useState<string | null>(null);
+  const [todoSyncTarget, setTodoSyncTarget] = useState<"google" | "reclaim">("google");
 
   const updateUrl = useCallback(
     (
@@ -72,6 +75,28 @@ export function AppLayout({ children: _children }: { children?: React.ReactNode 
   useEffect(() => {
     document.title = view === "todo" ? TODO_DOCUMENT_TITLE : DEFAULT_DOCUMENT_TITLE;
   }, [view]);
+
+  useEffect(() => {
+    if (view !== "todo") return;
+    let cancelled = false;
+    void fetch("/api/settings/todo-list")
+      .then((res) => res.json())
+      .then((data: { todoSyncTarget?: string }) => {
+        if (cancelled) return;
+        setTodoSyncTarget(data.todoSyncTarget === "reclaim" ? "reclaim" : "google");
+      })
+      .catch(() => {
+        if (!cancelled) setTodoSyncTarget("google");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
+
+  const apiKeyRequirements = useMemo(
+    () => apiKeyRequirementsForView(view, view === "todo" ? { todoSyncTarget } : undefined),
+    [view, todoSyncTarget]
+  );
 
   /** Invalidate CRM analysis SWR cache when Chat/Tinder finishes analysis (CrmView may be unmounted). */
   useEffect(() => {
@@ -237,6 +262,10 @@ export function AppLayout({ children: _children }: { children?: React.ReactNode 
             ))}
           </nav>
         </header>
+
+        {apiKeyRequirements.length > 0 && (
+          <ApiKeysSetupBanner requirements={apiKeyRequirements} />
+        )}
 
         <div key={view} className="flex-1 min-h-0 overflow-hidden">
           {view === "chat" && (

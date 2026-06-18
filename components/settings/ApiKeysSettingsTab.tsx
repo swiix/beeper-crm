@@ -7,35 +7,7 @@ import {
   SettingsSection,
 } from "./SettingsSection";
 
-type ApiKeySource = "settings" | "env" | "none";
-
-type ApiKeysStatusResponse = {
-  openai: { configured: boolean; hint: string | null; source: ApiKeySource };
-  beeper: {
-    url: string;
-    urlSource: ApiKeySource;
-    tokenConfigured: boolean;
-    tokenHint: string | null;
-    tokenSource: ApiKeySource;
-  };
-  google: {
-    clientIdConfigured: boolean;
-    clientIdHint: string | null;
-    clientIdSource: ApiKeySource;
-    clientSecretConfigured: boolean;
-    clientSecretHint: string | null;
-    clientSecretSource: ApiKeySource;
-    redirectUri: string | null;
-    redirectUriSource: ApiKeySource;
-  };
-  reclaim: {
-    tokenConfigured: boolean;
-    tokenHint: string | null;
-    tokenSource: ApiKeySource;
-    connected?: boolean;
-    email?: string | null;
-  };
-};
+import type { ApiKeySource, ApiKeysStatusResponse } from "@/lib/api-keys-ui";
 
 function SourceBadge({ source }: { source: ApiKeySource }) {
   if (source === "env") {

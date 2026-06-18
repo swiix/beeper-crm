@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger";
 import { getOpenAiApiKey } from "@/lib/api-keys-settings";
+import { OPENAI_API_KEY_MISSING } from "@/lib/api-keys-errors";
 import { trackOpenAiUsageEvent } from "@/lib/openai-usage";
 
 const log = createLogger("api:todo-list:todos:smart-sort");
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   const openAiApiKey = getOpenAiApiKey();
   if (!openAiApiKey) {
     return NextResponse.json(
-      { error: "OpenAI API key not configured. Set it in Settings → API-Schlüssel." },
+      { error: OPENAI_API_KEY_MISSING },
       { status: 502 }
     );
   }

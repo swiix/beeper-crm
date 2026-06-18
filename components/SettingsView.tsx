@@ -13,6 +13,8 @@ import {
   SettingsSection,
 } from "./settings/SettingsSection";
 import { ApiKeysSettingsTab } from "./settings/ApiKeysSettingsTab";
+import { ApiKeysSetupBanner } from "./ApiKeysSetupBanner";
+import type { ApiKeyRequirement } from "@/lib/api-keys-ui";
 
 const SETTINGS_TABS: SettingsTabDef[] = [
   { id: "general", label: "Allgemein", hint: "Theme und grundlegendes Chat-Verhalten." },
@@ -516,6 +518,17 @@ export function SettingsView() {
   );
   const promptValidationOk = missingPromptKeys.length === 0;
 
+  const settingsApiKeyRequirements = useMemo((): ApiKeyRequirement[] => {
+    if (activeTab === "ai") return ["openai"];
+    if (activeTab === "todo") {
+      const reqs: ApiKeyRequirement[] = ["openai"];
+      if (todoSyncTarget === "google") reqs.push("google");
+      if (todoSyncTarget === "reclaim") reqs.push("reclaim");
+      return reqs;
+    }
+    return [];
+  }, [activeTab, todoSyncTarget]);
+
   const savePrompts = async () => {
     if (!promptValidationOk) {
       setPromptsError(
@@ -557,6 +570,9 @@ export function SettingsView() {
 
   return (
     <SettingsLayout tabs={SETTINGS_TABS} activeTab={activeTab} onTabChange={setActiveTab}>
+      {settingsApiKeyRequirements.length > 0 && (
+        <ApiKeysSetupBanner requirements={settingsApiKeyRequirements} className="-mx-4 -mt-4 mb-2 md:-mx-6 md:-mt-6 md:mb-4" />
+      )}
       {activeTab === "general" && (
         <>
           <SettingsSection title="Erscheinungsbild" description="Standard ist ein helles Theme; der bisherige dunkle Chat-Stil ist weiterhin wählbar.">
