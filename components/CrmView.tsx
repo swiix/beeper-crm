@@ -16,6 +16,7 @@ import {
 import { getAutoStageFromAnalysis } from "@/lib/keyword-rules";
 import { runWithConcurrency } from "@/lib/run-with-concurrency";
 import {
+  DEFAULT_CRM_VIEW_FILTER,
   getCrmViewFilter,
   setCrmViewFilter,
   getCrmSidebarMessagePanelHeightPx,
@@ -358,13 +359,14 @@ export function CrmView({
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [selectedContact, setSelectedContact] = useState<CrmContact | null>(null);
   const lastAppliedInitialContactId = useRef<string | null>(null);
+  const crmFiltersHydratedRef = useRef(false);
   /** Multi-select: contact IDs selected with Shift+click. */
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
-  const [search, setSearch] = useState(() => getCrmViewFilter().search);
+  const [search, setSearch] = useState(DEFAULT_CRM_VIEW_FILTER.search);
   const [activityFilter, setActivityFilter] = useState<ContactActivityFilter>(
-    () => getCrmViewFilter().activityFilter as ContactActivityFilter
+    DEFAULT_CRM_VIEW_FILTER.activityFilter as ContactActivityFilter
   );
-  const [activityFilterDays, setActivityFilterDays] = useState(() => getCrmViewFilter().activityFilterDays);
+  const [activityFilterDays, setActivityFilterDays] = useState(DEFAULT_CRM_VIEW_FILTER.activityFilterDays);
   const [draggedContactIds, setDraggedContactIds] = useState<string[]>([]);
   const [dragOverStage, setDragOverStage] = useState<CrmStage | null>(null);
   const [contactContextMenu, setContactContextMenu] = useState<{
@@ -385,13 +387,25 @@ export function CrmView({
     | "brancheDesc"
     | "kaufkraftAsc"
     | "kaufkraftDesc";
-  const [fupSort, setFupSort] = useState<FupSort>(() => getCrmViewFilter().fupSort as FupSort);
+  const [fupSort, setFupSort] = useState<FupSort>(DEFAULT_CRM_VIEW_FILTER.fupSort as FupSort);
   /** Filter by account/platform: empty = all, otherwise only contacts with at least one chat on that account. */
-  const [accountFilterId, setAccountFilterId] = useState(() => getCrmViewFilter().accountFilterId);
-  const [brancheFilter, setBrancheFilter] = useState(() => getCrmViewFilter().brancheFilter);
+  const [accountFilterId, setAccountFilterId] = useState(DEFAULT_CRM_VIEW_FILTER.accountFilterId);
+  const [brancheFilter, setBrancheFilter] = useState(DEFAULT_CRM_VIEW_FILTER.brancheFilter);
   const [analysisCacheBuster, setAnalysisCacheBuster] = useState(0);
 
   useEffect(() => {
+    const saved = getCrmViewFilter();
+    setSearch(saved.search);
+    setActivityFilter(saved.activityFilter as ContactActivityFilter);
+    setActivityFilterDays(saved.activityFilterDays);
+    setFupSort(saved.fupSort as FupSort);
+    setAccountFilterId(saved.accountFilterId);
+    setBrancheFilter(saved.brancheFilter);
+    crmFiltersHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!crmFiltersHydratedRef.current) return;
     setCrmViewFilter({
       activityFilter,
       activityFilterDays,

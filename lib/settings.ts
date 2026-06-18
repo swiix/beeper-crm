@@ -310,7 +310,7 @@ export interface SavedCrmViewFilter {
   brancheFilter: string;
 }
 
-const DEFAULT_CRM_VIEW_FILTER: SavedCrmViewFilter = {
+export const DEFAULT_CRM_VIEW_FILTER: SavedCrmViewFilter = {
   activityFilter: "all",
   activityFilterDays: 7,
   accountFilterId: "",
