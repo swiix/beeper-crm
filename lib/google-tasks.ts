@@ -1,5 +1,10 @@
 import { randomBytes } from "crypto";
 import { getDb } from "@/lib/db";
+import {
+  getGoogleClientId,
+  getGoogleClientSecret,
+  resolveApiKey,
+} from "@/lib/api-keys-settings";
 
 const GOOGLE_OAUTH_BASE = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -26,14 +31,26 @@ type TokenResponse = {
   error_description?: string;
 };
 
-function getRequiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`Missing environment variable: ${name}`);
+function requireGoogleClientId(): string {
+  const value = getGoogleClientId();
+  if (!value) {
+    throw new Error("Google Client ID is missing. Configure it in Settings → API-Schlüssel or GOOGLE_CLIENT_ID.");
+  }
+  return value;
+}
+
+function requireGoogleClientSecret(): string {
+  const value = getGoogleClientSecret();
+  if (!value) {
+    throw new Error(
+      "Google Client Secret is missing. Configure it in Settings → API-Schlüssel or GOOGLE_CLIENT_SECRET."
+    );
+  }
   return value;
 }
 
 export function getGoogleTasksRedirectUri(origin: string): string {
-  return process.env.GOOGLE_TASKS_REDIRECT_URI?.trim() || `${origin}/api/google-tasks/callback`;
+  return resolveApiKey("googleTasksRedirectUri") ?? `${origin}/api/google-tasks/callback`;
 }
 
 export function createAndStoreOauthState(): string {
@@ -56,7 +73,7 @@ export function consumeOauthState(state: string): boolean {
 }
 
 export function buildGoogleOauthUrl(origin: string): string {
-  const clientId = getRequiredEnv("GOOGLE_CLIENT_ID");
+  const clientId = requireGoogleClientId();
   const redirectUri = getGoogleTasksRedirectUri(origin);
   const state = createAndStoreOauthState();
   const params = new URLSearchParams({
@@ -102,8 +119,8 @@ function upsertAuth(token: TokenResponse): void {
 }
 
 export async function exchangeCodeForTokens(code: string, origin: string): Promise<void> {
-  const clientId = getRequiredEnv("GOOGLE_CLIENT_ID");
-  const clientSecret = getRequiredEnv("GOOGLE_CLIENT_SECRET");
+  const clientId = requireGoogleClientId();
+  const clientSecret = requireGoogleClientSecret();
   const redirectUri = getGoogleTasksRedirectUri(origin);
   const token = await requestToken(
     new URLSearchParams({
@@ -135,8 +152,8 @@ export function getGoogleTasksConnectionStatus(): { connected: boolean; needsRec
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<void> {
-  const clientId = getRequiredEnv("GOOGLE_CLIENT_ID");
-  const clientSecret = getRequiredEnv("GOOGLE_CLIENT_SECRET");
+  const clientId = requireGoogleClientId();
+  const clientSecret = requireGoogleClientSecret();
   const token = await requestToken(
     new URLSearchParams({
       client_id: clientId,

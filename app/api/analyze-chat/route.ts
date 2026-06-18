@@ -20,9 +20,9 @@ import {
   isAudioAttachment,
   type BeeperMessagesResponse,
 } from "@/lib/beeper-chat-messages";
+import { getOpenAiApiKey } from "@/lib/api-keys-settings";
 
 const log = createLogger("api:analyze");
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANALYSIS_MESSAGE_LIMIT = MAX_CHAT_MESSAGES;
 const CHUNK_MESSAGE_SIZE = 60;
 const LONG_CHAT_MODE_THRESHOLD = 120;
@@ -199,6 +199,8 @@ function trimToTokenBudget(text: string, maxTokens: number): string {
 }
 
 async function callOpenAiJson(systemPrompt: string, userContent: string): Promise<Record<string, unknown>> {
+  const openAiApiKey = getOpenAiApiKey();
+  if (!openAiApiKey) throw new Error("OpenAI API key not configured");
   const systemTokens = estimateTokens(systemPrompt);
   const userTokens = estimateTokens(userContent);
   if (systemTokens + userTokens > SAFE_REQUEST_INPUT_TOKENS) {
@@ -210,7 +212,7 @@ async function callOpenAiJson(systemPrompt: string, userContent: string): Promis
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${openAiApiKey}`,
     },
     body: JSON.stringify({
       model: ANALYSIS_CHAT_MODEL,
@@ -395,9 +397,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!OPENAI_API_KEY) {
+  if (!getOpenAiApiKey()) {
     return NextResponse.json(
-      { error: "OPENAI_API_KEY not configured" },
+      { error: "OpenAI API key not configured. Set it in Settings → API-Schlüssel." },
       { status: 503 }
     );
   }

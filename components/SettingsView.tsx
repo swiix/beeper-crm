@@ -12,9 +12,11 @@ import {
   SettingsSaveButton,
   SettingsSection,
 } from "./settings/SettingsSection";
+import { ApiKeysSettingsTab } from "./settings/ApiKeysSettingsTab";
 
 const SETTINGS_TABS: SettingsTabDef[] = [
   { id: "general", label: "Allgemein", hint: "Theme und grundlegendes Chat-Verhalten." },
+  { id: "api", label: "API-Schlüssel", hint: "Beeper, OpenAI, Google Tasks und Reclaim." },
   { id: "tinder", label: "Tinder", hint: "TinderChat: Tastatur, Preload und Reminder-Vorlagen." },
   { id: "crm", label: "CRM", hint: "Automatische Follow-up- und Keyword-Regeln." },
   { id: "todo", label: "Todo", hint: "KI-Extraktion, Sync mit Google Tasks und Reclaim." },
@@ -126,9 +128,6 @@ export function SettingsView() {
   const [reclaimConnected, setReclaimConnected] = useState<boolean | null>(null);
   const [reclaimTokenHint, setReclaimTokenHint] = useState<string | null>(null);
   const [reclaimEmail, setReclaimEmail] = useState<string | null>(null);
-  const [reclaimApiToken, setReclaimApiToken] = useState("");
-  const [reclaimTokenSaving, setReclaimTokenSaving] = useState(false);
-  const [reclaimTokenError, setReclaimTokenError] = useState<string | null>(null);
   const [todoSettingsLoading, setTodoSettingsLoading] = useState(true);
   const [todoSettingsSaving, setTodoSettingsSaving] = useState(false);
   const [todoSettingsError, setTodoSettingsError] = useState<string | null>(null);
@@ -496,28 +495,6 @@ export function SettingsView() {
     }
   };
 
-  const saveReclaimToken = async () => {
-    setReclaimTokenSaving(true);
-    setReclaimTokenError(null);
-    try {
-      const res = await fetch("/api/reclaim/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiToken: reclaimApiToken.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Token speichern fehlgeschlagen");
-      setReclaimApiToken("");
-      setReclaimConnected(data.connected === true);
-      setReclaimTokenHint(typeof data.tokenHint === "string" ? data.tokenHint : null);
-      setReclaimEmail(typeof data.email === "string" ? data.email : null);
-    } catch (e) {
-      setReclaimTokenError(e instanceof Error ? e.message : "Reclaim-Token konnte nicht gespeichert werden");
-    } finally {
-      setReclaimTokenSaving(false);
-    }
-  };
-
   const clearTodoSuggestionsCache = async () => {
     setSuggestionsCacheClearing(true);
     setSuggestionsCacheMessage(null);
@@ -530,28 +507,6 @@ export function SettingsView() {
       setSuggestionsCacheMessage(e instanceof Error ? e.message : "Cache konnte nicht geleert werden");
     } finally {
       setSuggestionsCacheClearing(false);
-    }
-  };
-
-  const clearReclaimToken = async () => {
-    setReclaimTokenSaving(true);
-    setReclaimTokenError(null);
-    try {
-      const res = await fetch("/api/reclaim/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clear: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Token entfernen fehlgeschlagen");
-      setReclaimApiToken("");
-      setReclaimConnected(false);
-      setReclaimTokenHint(null);
-      setReclaimEmail(null);
-    } catch (e) {
-      setReclaimTokenError(e instanceof Error ? e.message : "Reclaim-Token konnte nicht entfernt werden");
-    } finally {
-      setReclaimTokenSaving(false);
     }
   };
 
@@ -671,6 +626,8 @@ export function SettingsView() {
           </SettingsSection>
         </>
       )}
+
+      {activeTab === "api" && <ApiKeysSettingsTab />}
 
       {activeTab === "tinder" && (
         <>
@@ -1181,7 +1138,7 @@ export function SettingsView() {
                       </span>
                     </div>
                     <p className="mt-2 text-xs text-wa-text-secondary">
-                      OAuth-Verbindung für Google Tasks. Reclaim-Sync ist deaktiviert, solange Google Tasks gewählt ist.
+                      OAuth-Verbindung für Google Tasks. Client-ID und Secret unter Einstellungen → API-Schlüssel.
                     </p>
                     {!googleTasksConnected && (
                       <button
@@ -1215,7 +1172,7 @@ export function SettingsView() {
                       </span>
                     </div>
                     <p className="mt-2 text-xs text-wa-text-secondary">
-                      Token aus Reclaim: Developer → API Token. Google-Tasks-Sync ist deaktiviert, solange Reclaim gewählt ist.
+                      API-Token unter Einstellungen → API-Schlüssel. Google-Tasks-Sync ist deaktiviert, solange Reclaim gewählt ist.
                     </p>
                     {reclaimConnected && (
                       <p className="mt-2 text-xs text-green-600 dark:text-green-400">
@@ -1223,39 +1180,11 @@ export function SettingsView() {
                         {reclaimTokenHint ? ` · ${reclaimTokenHint}` : ""}
                       </p>
                     )}
-                    <label htmlFor="reclaim-api-token" className="mt-3 block text-xs text-wa-text-secondary">
-                      API-Token
-                    </label>
-                    <input
-                      id="reclaim-api-token"
-                      type="password"
-                      value={reclaimApiToken}
-                      onChange={(e) => setReclaimApiToken(e.target.value)}
-                      placeholder={reclaimTokenHint ? `Neuer Token (aktuell ${reclaimTokenHint})` : "Reclaim API Token einfügen"}
-                      autoComplete="off"
-                      className="mt-1 w-full rounded-lg border border-wa-border bg-wa-input-bg px-3 py-2 text-sm text-wa-text-primary placeholder:text-wa-text-secondary focus:border-wa-green focus:outline-none"
-                    />
-                    {reclaimTokenError && <SettingsError message={reclaimTokenError} />}
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={saveReclaimToken}
-                        disabled={reclaimTokenSaving || !reclaimApiToken.trim()}
-                        className="rounded-lg bg-wa-green px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                      >
-                        {reclaimTokenSaving ? "Speichern…" : "Token speichern"}
-                      </button>
-                      {reclaimConnected && (
-                        <button
-                          type="button"
-                          onClick={clearReclaimToken}
-                          disabled={reclaimTokenSaving}
-                          className="rounded-lg border border-wa-border px-3 py-1.5 text-xs text-wa-text-secondary hover:bg-wa-panel-secondary disabled:opacity-50"
-                        >
-                          Token entfernen
-                        </button>
-                      )}
-                    </div>
+                    {!reclaimConnected && (
+                      <p className="mt-2 text-xs text-wa-text-secondary">
+                        Noch kein gültiger Token — bitte unter API-Schlüssel hinterlegen.
+                      </p>
+                    )}
                     {autoSyncOnAccept && reclaimConnected === false && (
                       <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                         Auto-Sync greift erst nach gültigem API-Token.

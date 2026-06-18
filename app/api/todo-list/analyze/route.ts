@@ -32,9 +32,9 @@ import {
   isAudioAttachment,
   type BeeperMessagesResponse,
 } from "@/lib/beeper-chat-messages";
+import { getOpenAiApiKey } from "@/lib/api-keys-settings";
 
 const log = createLogger("api:todo-list:analyze");
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 interface MessageAttachment {
   type?: string;
@@ -599,7 +599,7 @@ export async function POST(request: NextRequest) {
             const userContent = onePromptMode
               ? `Heutiges Datum: ${today}.\n\nONE-PROMPT:\n${onePrompt}\n\n${contactLine}Chat-Verlauf (Datum pro Nachricht; Sprachnachrichten transkribiert; Bilder per KI beschrieben):\n${transcript}`
               : `Heutiges Datum: ${today}.\n\n${contactLine}Chat-Verlauf (Datum pro Nachricht; Sprachnachrichten transkribiert; Bilder per KI beschrieben):\n${transcript}`;
-            if (!OPENAI_API_KEY) {
+            if (!getOpenAiApiKey()) {
               const errLine = JSON.stringify({ type: "error", error: "OpenAI API key not configured" }) + "\n";
               appendTodoAnalysisTrace({
                 ts: new Date().toISOString(),
@@ -648,7 +648,7 @@ export async function POST(request: NextRequest) {
             const tOpenAi = Date.now();
             const res = await fetch("https://api.openai.com/v1/chat/completions", {
               method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${getOpenAiApiKey()}` },
               body: JSON.stringify(payload),
             });
             const data = (await res.json()) as {
@@ -866,7 +866,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (!OPENAI_API_KEY) {
+    if (!getOpenAiApiKey()) {
       appendTodoAnalysisTrace({
         ts: new Date().toISOString(),
         chatId: chatIdValue,
@@ -914,7 +914,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${getOpenAiApiKey()}`,
       },
       body: JSON.stringify(payload),
     });

@@ -7,10 +7,10 @@ import { beeperFetch } from "@/lib/beeper";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { getCacheTTLMs } from "@/lib/cache-settings";
 import { createLogger } from "@/lib/logger";
+import { getOpenAiApiKey } from "@/lib/api-keys-settings";
 import { trackOpenAiUsageEvent } from "@/lib/openai-usage";
 
 const log = createLogger("transcribe");
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const WHISPER_API = "https://api.openai.com/v1/audio/transcriptions";
 
 function transcriptCacheKey(audioUrl: string): string {
@@ -39,6 +39,7 @@ export async function getTranscript(audioUrl: string): Promise<string> {
   const cached = cacheGet<string>(key);
   if (cached !== undefined) return cached;
 
+  const OPENAI_API_KEY = getOpenAiApiKey();
   if (!OPENAI_API_KEY) {
     log.warn("OPENAI_API_KEY not set, skipping transcription");
     return "";

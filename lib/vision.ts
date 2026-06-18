@@ -6,10 +6,10 @@
 import { beeperFetch } from "@/lib/beeper";
 import { cacheGet, cacheSet, cacheDelete, CACHE_TTL } from "@/lib/cache";
 import { createLogger } from "@/lib/logger";
+import { getOpenAiApiKey } from "@/lib/api-keys-settings";
 import { trackOpenAiUsageEvent } from "@/lib/openai-usage";
 
 const log = createLogger("vision");
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 /** Vision model: gpt-4o is more reliable and refuses less often; set OPENAI_VISION_MODEL=gpt-4o-mini for lower cost. */
 const VISION_MODEL = process.env.OPENAI_VISION_MODEL || "gpt-4o";
 
@@ -121,11 +121,13 @@ async function callVisionApi(
   prompt: string,
   systemPrompt: string
 ): Promise<string> {
+  const openAiApiKey = getOpenAiApiKey();
+  if (!openAiApiKey) return "";
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${openAiApiKey}`,
     },
     body: JSON.stringify({
       model: VISION_MODEL,
@@ -191,8 +193,9 @@ export async function getImageDescription(
     return cached;
   }
 
-  if (!OPENAI_API_KEY) {
-    log.warn("OPENAI_API_KEY not set, skipping image analysis");
+  const openAiApiKey = getOpenAiApiKey();
+  if (!openAiApiKey) {
+    log.warn("OpenAI API key not set, skipping image analysis");
     return "";
   }
 
@@ -235,8 +238,9 @@ export async function analyzeImageDataUrl(
   dataUrl: string,
   prompt: string = DEFAULT_IMAGE_PROMPT
 ): Promise<string> {
-  if (!OPENAI_API_KEY) {
-    log.warn("OPENAI_API_KEY not set, skipping image analysis");
+  const openAiApiKey = getOpenAiApiKey();
+  if (!openAiApiKey) {
+    log.warn("OpenAI API key not set, skipping image analysis");
     return "";
   }
   if (!dataUrl?.startsWith("data:image/")) return "";

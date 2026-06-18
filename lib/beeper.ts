@@ -4,18 +4,17 @@
  */
 
 import { createLogger } from "@/lib/logger";
+import { getBeeperApiUrl, getBeeperMcpToken } from "@/lib/api-keys-settings";
 
 const log = createLogger("beeper");
-
-const BASE = process.env.BEEPER_API_URL || "http://localhost:23373";
-const TOKEN = process.env.BEEPER_MCP_TOKEN || "";
 
 function headers(): HeadersInit {
   const h: HeadersInit = {
     "Content-Type": "application/json",
   };
-  if (TOKEN) {
-    (h as Record<string, string>)["Authorization"] = `Bearer ${TOKEN}`;
+  const token = getBeeperMcpToken();
+  if (token) {
+    (h as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
   return h;
 }
@@ -45,7 +44,7 @@ export async function beeperFetch(
   path: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const url = `${BASE.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+  const url = `${getBeeperApiUrl().replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
   log.debug({ path, method: (options.method ?? "GET").toUpperCase() }, "beeper request");
   try {
     const res = await fetch(url, {
@@ -67,9 +66,9 @@ export async function beeperFetch(
 export function beeperUserErrorMessage(path: string, status: number, bodyText: string): string {
   const text = bodyText ?? "";
   return status === 401
-    ? TOKEN.trim()
-      ? "Zugriff verweigert (401). BEEPER_MCP_TOKEN prüfen oder in Beeper neu erzeugen (Einstellungen → Entwickler)."
-      : "Zugriff verweigert (401). In .env.local BEEPER_MCP_TOKEN setzen — Token aus Beeper Desktop → Einstellungen → Entwickler."
+    ? getBeeperMcpToken().trim()
+      ? "Zugriff verweigert (401). Beeper MCP-Token prüfen oder in Einstellungen → API-Schlüssel neu setzen."
+      : "Zugriff verweigert (401). Beeper MCP-Token in Einstellungen → API-Schlüssel setzen — Token aus Beeper Desktop → Einstellungen → Entwickler."
     : status === 404
       ? "Anfrage nicht gefunden (404). Beeper-API-Version prüfen."
       : status >= 500

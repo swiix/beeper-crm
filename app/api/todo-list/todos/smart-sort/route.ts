@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger";
+import { getOpenAiApiKey } from "@/lib/api-keys-settings";
 import { trackOpenAiUsageEvent } from "@/lib/openai-usage";
 
 const log = createLogger("api:todo-list:todos:smart-sort");
@@ -20,9 +21,12 @@ Rules:
  * Returns: { orderedIds: string[] } — same ids in urgency order (most urgent first).
  */
 export async function POST(request: NextRequest) {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  if (!OPENAI_API_KEY?.trim()) {
-    return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 502 });
+  const openAiApiKey = getOpenAiApiKey();
+  if (!openAiApiKey) {
+    return NextResponse.json(
+      { error: "OpenAI API key not configured. Set it in Settings → API-Schlüssel." },
+      { status: 502 }
+    );
   }
 
   let body: { todos?: unknown[] };
@@ -65,7 +69,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",

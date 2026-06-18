@@ -43,9 +43,9 @@ function getToken(): string | null {
 async function reclaimRequest<T>(
   method: string,
   endpoint: string,
-  options?: { params?: Record<string, string>; body?: unknown }
+  options?: { params?: Record<string, string>; body?: unknown; token?: string | null }
 ): Promise<T> {
-  const token = getToken();
+  const token = options?.token?.trim() || getToken();
   if (!token) throw new Error("Reclaim is not connected. Please add an API token in Settings.");
 
   const url = new URL(endpoint, RECLAIM_API_BASE);
@@ -93,11 +93,13 @@ export function getReclaimConnectionStatus(): ReclaimConnectionStatus {
   return { connected: true };
 }
 
-export async function verifyReclaimConnection(): Promise<ReclaimConnectionStatus> {
-  const token = getToken();
+export async function verifyReclaimConnection(tokenOverride?: string | null): Promise<ReclaimConnectionStatus> {
+  const token = tokenOverride?.trim() || getToken();
   if (!token) return { connected: false };
   try {
-    const user = await reclaimRequest<{ id?: number; email?: string }>("GET", "/api/users/current");
+    const user = await reclaimRequest<{ id?: number; email?: string }>("GET", "/api/users/current", {
+      token,
+    });
     return {
       connected: true,
       email: user.email ?? null,
