@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cacheDelete, cacheInvalidatePrefix } from "@/lib/cache";
+import { clearAllAnalyses } from "@/lib/analysis-db";
+import { clearAllCrmLastActivityInDb } from "@/lib/crm-last-activity-db";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("api:settings:cache:clear");
 
-const VALID_TYPES = ["accounts", "chats", "chatDetail", "analysis", "transcript"] as const;
+const VALID_TYPES = ["accounts", "chats", "chatDetail", "analysis", "crmLastActivity", "transcript"] as const;
 
 /**
- * POST: clear cache by type. Body: { type: "accounts" | "chats" | "chatDetail" | "analysis" | "transcript" }.
+ * POST: clear cache by type. Body: { type: "accounts" | "chats" | "chatDetail" | "analysis" | "crmLastActivity" | "transcript" }.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +33,11 @@ export async function POST(request: NextRequest) {
         break;
       case "analysis":
         cacheInvalidatePrefix("analysis:");
+        clearAllAnalyses();
+        break;
+      case "crmLastActivity":
+        cacheInvalidatePrefix("crm:last-activity:");
+        clearAllCrmLastActivityInDb();
         break;
       case "transcript":
         cacheInvalidatePrefix("transcript:");

@@ -1,6 +1,6 @@
 /**
  * CRM Contact: one lead can have multiple chats (e.g. Instagram + WhatsApp).
- * Persisted in localStorage (per browser) and synced to server (data/contacts.json) via API.
+ * Persisted in localStorage (per browser) and synced to server (SQLite via API).
  */
 
 export interface ContactChat {
@@ -47,7 +47,7 @@ function saveToStorage(contacts: CrmContact[]) {
   }
 }
 
-/** Persist current contacts to server (data/contacts.json). Fire-and-forget. */
+/** Persist current contacts to server (SQLite). Fire-and-forget. */
 function persistContactsToServer(contacts: CrmContact[]) {
   if (typeof window === "undefined") return;
   fetch("/api/crm/contacts", {
@@ -61,10 +61,10 @@ function persistContactsToServer(contacts: CrmContact[]) {
 
 /**
  * Load contacts from server into localStorage. Call once on app init so the client
- * uses the same data as the server (data/contacts.json).
+ * uses the same data as the server (SQLite beeper-crm.db).
  */
 /**
- * Load contacts from server (data/contacts.json) into localStorage.
+ * Load contacts from server (SQLite) into localStorage.
  * Call once on app init. If server has data, use it; if server is empty but we have local data, push to server first.
  */
 export function loadContactsFromServer(): void {

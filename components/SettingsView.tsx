@@ -785,6 +785,15 @@ export function SettingsView() {
           title="CRM-Regeln"
           description="Automatische Aktionen im CRM: Follow-ups (Nachrichten von dir ohne Antwort) und Keyword-Stages aus der Analyse."
         >
+          <div className="mb-4 rounded-lg border border-wa-border bg-wa-panel-secondary/60 px-3 py-2.5 text-xs text-wa-text-secondary">
+            <p className="font-medium text-wa-text-primary">Lokale CRM-Datenbank</p>
+            <p className="mt-1">
+              Kontakte, KI-Analysen und Last-Activity werden in{" "}
+              <code className="rounded bg-wa-input-bg px-1">data/beeper-crm.db</code> (SQLite) auf deinem System
+              gespeichert und überleben Server-Neustarts. Im Browser bleibt zusätzlich eine Kopie der Kontakte in{" "}
+              <code className="rounded bg-wa-input-bg px-1">localStorage</code>.
+            </p>
+          </div>
           {rulesLoading ? (
             <SettingsLoading label="Lade Regeln…" />
           ) : (
@@ -910,7 +919,9 @@ export function SettingsView() {
                           ? "Accounts"
                           : key === "chats"
                             ? "Chats"
-                          : "Analyse";
+                          : key === "analysis"
+                            ? "Analyse (SQLite)"
+                            : key;
                   const unit = cacheTTLUnit[key];
                   const displayVal = minutesToDisplay(cacheTTL[key], unit);
                   const displayRounded =
@@ -962,8 +973,26 @@ export function SettingsView() {
                   );
                 })}
               </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-wa-text-primary">CRM Last-Activity (SQLite)</span>
+                <button
+                  type="button"
+                  onClick={() => clearCacheByType("crmLastActivity")}
+                  disabled={cacheClearingType !== null}
+                  title="Gecachte Follow-up-Zeiten im CRM leeren"
+                  className="rounded border border-wa-border px-2 py-1 text-xs text-wa-text-secondary hover:bg-wa-panel-secondary disabled:opacity-50"
+                >
+                  {cacheClearingType === "crmLastActivity" ? "Leeren…" : "Leeren"}
+                </button>
+              </div>
               <p className="mt-2 text-xs text-wa-text-secondary">
-                Nachrichten werden absichtlich nicht gecacht (immer <code className="rounded bg-wa-input-bg px-1">no-store</code>), damit stets der aktuelle Stand geladen wird.
+                „Analyse (SQLite)“ leert RAM-Cache und alle gespeicherten Chat-Analysen in{" "}
+                <code className="rounded bg-wa-input-bg px-1">beeper-crm.db</code>. Nachrichten werden absichtlich nicht
+                gecacht (immer <code className="rounded bg-wa-input-bg px-1">no-store</code>), damit stets der aktuelle
+                Stand geladen wird.
+              </p>
+              <p className="mt-1 text-xs text-wa-text-secondary">
+                CRM-Kontakte liegen ebenfalls in derselben SQLite-Datei (nicht über diese Buttons löschbar).
               </p>
               {cacheError && <SettingsError message={cacheError} />}
               <SettingsSaveButton

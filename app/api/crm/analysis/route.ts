@@ -55,6 +55,7 @@ async function computeCrmAnalysis(chatIds: string[]): Promise<Record<string, Con
 /**
  * GET /api/crm/analysis?chatIds=id1,id2,id3
  * Returns ContactAnalysis per chatId from in-memory cache or SQLite (default view), same as chat analysis hydration.
+ * SQLite table: chat_analyses in data/beeper-crm.db
  */
 export async function GET(request: NextRequest) {
   const chatIdsParam = request.nextUrl.searchParams.get("chatIds");

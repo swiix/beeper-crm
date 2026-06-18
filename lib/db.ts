@@ -108,6 +108,21 @@ function initSchema(database: Database.Database): void {
       state TEXT NOT NULL PRIMARY KEY,
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS crm_contacts_store (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      contacts_json TEXT NOT NULL DEFAULT '[]',
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS crm_last_activity (
+      chat_id TEXT NOT NULL PRIMARY KEY,
+      last_from_me TEXT,
+      last_from_them TEXT,
+      follow_up_count INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_last_activity_updated ON crm_last_activity (updated_at DESC);
   `);
   try {
     database.exec("ALTER TABLE todos ADD COLUMN source_chat_name TEXT");

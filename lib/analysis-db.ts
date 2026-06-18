@@ -204,3 +204,8 @@ export function setTinderPriority(chatId: string, priorityIndex: number): void {
      ON CONFLICT (chat_id, view) DO UPDATE SET priority_index = excluded.priority_index, updated_at = excluded.updated_at`
   ).run(chatId, VIEW_TINDER, n, now);
 }
+
+/** Remove all persisted chat analyses (CRM + Tinder smart cache). */
+export function clearAllAnalyses(): void {
+  getDb().prepare("DELETE FROM chat_analyses").run();
+}

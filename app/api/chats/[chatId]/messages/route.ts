@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { beeperJson, beeperFetch } from "@/lib/beeper";
 import { cacheInvalidatePrefix } from "@/lib/cache";
+import { deleteCrmLastActivityFromDb } from "@/lib/crm-last-activity-db";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("api:messages");
@@ -54,6 +55,7 @@ export async function POST(
     }
     cacheInvalidatePrefix("chats:");
     cacheInvalidatePrefix(`crm:last-activity:${chatId}`);
+    deleteCrmLastActivityFromDb(chatId);
     log.debug({ chatId }, "cache invalidated for chats and last-activity");
     return NextResponse.json(data);
   } catch (e) {

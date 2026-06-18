@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { beeperJson } from "@/lib/beeper";
 import { createLogger } from "@/lib/logger";
 import { cacheGet, cacheSet } from "@/lib/cache";
+import {
+  deleteCrmLastActivityFromDb,
+  getCrmLastActivityFromDb,
+  setCrmLastActivityInDb,
+} from "@/lib/crm-last-activity-db";
 
 const log = createLogger("api:crm:last-activity");
 const LAST_ACTIVITY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -82,6 +87,12 @@ async function computeLastActivity({
             result[chatId] = cached;
             return;
           }
+          const fromDb = getCrmLastActivityFromDb(chatId, LAST_ACTIVITY_TTL_MS);
+          if (fromDb) {
+            result[chatId] = fromDb;
+            cacheSet(lastActivityCacheKey(chatId), fromDb, LAST_ACTIVITY_TTL_MS);
+            return;
+          }
         }
         const data = await beeperJson<{ items?: MessageItem[] }>(
           `/v1/chats/${encodeURIComponent(chatId)}/messages`,
@@ -103,6 +114,7 @@ async function computeLastActivity({
         const computed = { lastFromMe, lastFromThem, followUpCount };
         result[chatId] = computed;
         cacheSet(lastActivityCacheKey(chatId), computed, LAST_ACTIVITY_TTL_MS);
+        setCrmLastActivityInDb(chatId, computed);
       } catch (e) {
         const message = e instanceof Error ? e.message : "unknown error";
         failed.push({ chatId, message });

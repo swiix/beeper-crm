@@ -6,7 +6,7 @@ import type { CrmContact } from "@/lib/contacts";
 const log = createLogger("api:crm:contacts");
 
 /**
- * GET: return all CRM contacts from data/contacts.json.
+ * GET: return all CRM contacts from SQLite (beeper-crm.db).
  */
 export async function GET() {
   try {
@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 /**
- * PUT: replace all CRM contacts in data/contacts.json. Body must be a JSON array of CrmContact.
+ * PUT: replace all CRM contacts in SQLite. Body must be a JSON array of CrmContact.
  */
 export async function PUT(request: NextRequest) {
   try {
